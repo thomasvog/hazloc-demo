@@ -253,12 +253,18 @@ def logout():
 def dashboard():
     st = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM findings GROUP BY 1")}
     by_crit = {r["k"]: r["n"] for r in rows("SELECT criticality k, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")}
-    by_zone = {r["k"]: r["n"] for r in rows("SELECT zone k, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")}
+    paths = locs()[1]
+    sec = {}
+    for r in rows("SELECT location_id, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1"):
+        parts = paths[r["location_id"]].split(" › ")
+        k = " › ".join(parts[:2]) if len(parts) > 1 else parts[0] + " (sin sector)"
+        sec[k] = sec.get(k, 0) + r["n"]
+    by_sector = sorted(sec.items(), key=lambda kv: (-kv[1], kv[0]))
     old = one("SELECT COUNT(*) n FROM findings WHERE status='pendiente' AND CURRENT_DATE - inspected_at > 30")["n"]
     top = rows("SELECT id, tag, zone, criticality, location_id, inspected_at, description FROM findings "
                "WHERE status='pendiente' ORDER BY CASE criticality WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, inspected_at LIMIT 8")
     return render_template("dashboard.html", pend=st.get("pendiente", 0), sol=st.get("solucionado", 0),
-                           by_crit=by_crit, by_zone=by_zone, old=old, top=top, paths=locs()[1])
+                           by_crit=by_crit, by_sector=by_sector, old=old, top=top, paths=paths)
 
 
 @app.route("/findings")

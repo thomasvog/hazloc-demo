@@ -98,8 +98,8 @@ TEMPLATES['dashboard.html'] = r'''{% extends "base.html" %}{% block c %}
 <div class="two">
  <div class="box"><h3 style="margin-top:0">Pendientes por criticidad</h3>
  {% for c in CRIT %}{% set n = by_crit.get(c,0) %}<div class="bar"><span><span class="pill {{c}}">{{ c }}</span></span><i style="width:{{ n*100/(pend or 1) }}%;background:var(--{{c}})"></i><b>{{ n }}</b></div>{% endfor %}</div>
- <div class="box"><h3 style="margin-top:0">Pendientes por zona</h3>
- {% for z in ZONES %}{% set n = by_zone.get(z,0) %}<div class="bar"><span>Zona {{ z }}</span><i style="width:{{ n*100/(pend or 1) }}%"></i><b>{{ n }}</b></div>{% endfor %}</div>
+ <div class="box"><h3 style="margin-top:0">Pendientes por sector</h3>
+ {% for label, n in by_sector %}<div class="bar"><span style="width:10rem;font-size:.9rem">{{ label }}</span><i style="width:{{ n*100/(pend or 1) }}%"></i><b>{{ n }}</b></div>{% else %}<p class="mu">No hay pendientes.</p>{% endfor %}</div>
 </div>
 <h3>Pendientes más urgentes</h3>
 {% if top %}<div class="scroll"><table>
