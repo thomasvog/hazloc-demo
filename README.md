@@ -9,11 +9,13 @@ Aplicación Flask con base de datos Postgres. Los hallazgos y las fotos se guard
 3. **Base de datos:** dentro del proyecto en Vercel, ir a la pestaña *Storage*, elegir *Neon* (Postgres) y conectarlo al proyecto. Vercel agrega solo la variable `DATABASE_URL`.
 4. **Redeploy:** pestaña *Deployments*, menú ⋯ del último despliegue › *Redeploy*.
 5. Abrir la URL del proyecto. La primera vez aparece la pantalla de instalación: ingresar el código `SETUP_KEY` y crear el usuario administrador.
-6. En *Administración*, cargar las ubicaciones (planta › sector › área › equipo) y los usuarios.
+6. Cargar las **Áreas** y los **Usuarios** (menú *Áreas* y *Usuarios*, solo administrador) y los **Tags** de equipos (menú *Tags*, supervisores y administrador).
 
 ## Notas
 
 - Cada envío admite hasta ~4 MB de fotos. El navegador las reduce solo antes de enviarlas; si subís muchas juntas, hacelo en tandas.
 - Tras 5 intentos fallidos de ingreso, el usuario queda bloqueado 10 minutos.
-- Roles: *carga* (registra hallazgos y fotos del estado encontrado), *cierre* (además cierra, reabre y sube fotos del después), *admin* (además gestiona usuarios y ubicaciones).
+- Roles: *carga* (registra hallazgos eligiendo el tag de una lista y sube fotos del estado encontrado), *cierre* (además cierra, reabre, sube fotos del después y administra los tags), *admin* (además gestiona áreas y usuarios).
+- Cada usuario puede cambiar su contraseña desde «Cambiar contraseña» (arriba a la derecha). El administrador puede eliminar usuarios aunque tengan hallazgos: los hallazgos se conservan con el nombre que tenía.
+- Un usuario desactivado no puede ingresar; los cambios de rol y de estado se aplican al instante.
 - Las plantillas HTML están dentro de `tpl.py`.

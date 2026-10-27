@@ -32,7 +32,6 @@ app.config.update(
 ZONES = ["0", "1", "2", "20", "21", "22"]
 CRIT = ["alta", "media", "baja"]
 PROT = ["Ex d", "Ex e", "Ex i", "Ex p", "Ex n", "Ex m", "Ex o", "Ex q", "Ex t", "Otro / N.A."]
-LEVELS = ["Planta", "Sector", "Área", "Equipo"]
 ROLES = {"carga": 1, "cierre": 2, "admin": 3}
 ROLE_LABEL = {"carga": "Carga hallazgos", "cierre": "Carga y cierra hallazgos", "admin": "Administrador"}
 
@@ -41,11 +40,25 @@ SCHEMA = [
     "CREATE TABLE IF NOT EXISTS locations(id SERIAL PRIMARY KEY, parent_id INT REFERENCES locations(id), name TEXT NOT NULL)",
     """CREATE TABLE IF NOT EXISTS findings(id SERIAL PRIMARY KEY, location_id INT NOT NULL REFERENCES locations(id),
        tag TEXT, zone TEXT NOT NULL, protection TEXT, criticality TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pendiente',
-       description TEXT NOT NULL, inspector_id INT NOT NULL REFERENCES users(id), inspected_at DATE NOT NULL,
-       resolution TEXT, closed_by INT REFERENCES users(id), closed_at DATE)""",
+       description TEXT NOT NULL, inspector_id INT REFERENCES users(id) ON DELETE SET NULL, inspected_at DATE NOT NULL,
+       resolution TEXT, closed_by INT REFERENCES users(id) ON DELETE SET NULL, closed_at DATE)""",
     """CREATE TABLE IF NOT EXISTS photos(id SERIAL PRIMARY KEY, finding_id INT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
        kind TEXT NOT NULL, data BYTEA NOT NULL, created_at DATE NOT NULL)""",
     "CREATE TABLE IF NOT EXISTS attempts(id SERIAL PRIMARY KEY, username TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE",
+    """CREATE TABLE IF NOT EXISTS equipment(id SERIAL PRIMARY KEY, tag TEXT NOT NULL, description TEXT,
+       location_id INT NOT NULL REFERENCES locations(id), zone TEXT NOT NULL, protection TEXT)""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_eq_tag ON equipment(lower(tag))",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS equipment_id INT REFERENCES equipment(id) ON DELETE SET NULL",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS inspector_name TEXT",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS closer_name TEXT",
+    "ALTER TABLE findings ALTER COLUMN inspector_id DROP NOT NULL",
+    "UPDATE findings f SET inspector_name=u.name FROM users u WHERE u.id=f.inspector_id AND f.inspector_name IS NULL",
+    "UPDATE findings f SET closer_name=u.name FROM users u WHERE u.id=f.closed_by AND f.closer_name IS NULL",
+    *[("DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='findings_%s_fkey' AND confdeltype <> 'n') THEN "
+       "ALTER TABLE findings DROP CONSTRAINT findings_%s_fkey; "
+       "ALTER TABLE findings ADD CONSTRAINT findings_%s_fkey FOREIGN KEY (%s) REFERENCES users(id) ON DELETE SET NULL; "
+       "END IF; END $$") % (c, c, c, c) for c in ("inspector_id", "closed_by")],
     "CREATE INDEX IF NOT EXISTS ix_f ON findings(status, criticality, zone, location_id)",
     "CREATE INDEX IF NOT EXISTS ix_p ON photos(finding_id)",
 ]
@@ -124,6 +137,12 @@ def gate():
         abort(400)
     if request.endpoint not in ("setup", None) and not has_users():
         return redirect(url_for("setup"))
+    if "uid" in session:
+        u = db().execute("SELECT role, active, name FROM users WHERE id=%s", (session["uid"],)).fetchone()
+        if not u or not u["active"]:
+            session.clear()
+            return redirect(url_for("login"))
+        session["role"], session["name"] = u["role"], u["name"]
 
 
 @app.errorhandler(413)
@@ -133,42 +152,20 @@ def too_big(_):
 
 @app.context_processor
 def consts():
-    return dict(ZONES=ZONES, CRIT=CRIT, PROT=PROT, LEVELS=LEVELS, ROLES=ROLES, ROLE_LABEL=ROLE_LABEL,
+    return dict(ZONES=ZONES, CRIT=CRIT, PROT=PROT, ROLES=ROLES, ROLE_LABEL=ROLE_LABEL,
                 can_close=ROLES.get(session.get("role"), 0) >= 2)
 
 
 def locs():
-    r = rows("SELECT id,parent_id,name FROM locations")
-    by = {x["id"]: x for x in r}
-
-    def path(i):
-        out = []
-        while i:
-            out.append(by[i]["name"])
-            i = by[i]["parent_id"]
-        return out[::-1]
-
-    lst = sorted(((i, " › ".join(path(i)), len(path(i))) for i in by), key=lambda t: t[1])
-    return lst, {i: p for i, p, _ in lst}
-
-
-def descendants(root):
-    kids = {}
-    for x in rows("SELECT id,parent_id FROM locations"):
-        kids.setdefault(x["parent_id"], []).append(x["id"])
-    out, st = [], [root]
-    while st:
-        i = st.pop()
-        out.append(i)
-        st += kids.get(i, [])
-    return out
+    r = rows("SELECT id, name FROM locations ORDER BY lower(name)")
+    return [(x["id"], x["name"], 1) for x in r], {x["id"]: x["name"] for x in r}
 
 
 def findings():
     a, w, p = request.args, [], []
     if a.get("loc", "").isdigit():
-        w.append("f.location_id = ANY(%s)")
-        p.append(descendants(int(a["loc"])))
+        w.append("f.location_id=%s")
+        p.append(int(a["loc"]))
     for k, col in (("zone", "zone"), ("crit", "criticality"), ("status", "status")):
         if a.get(k):
             w.append("f.%s=%%s" % col)
@@ -176,8 +173,9 @@ def findings():
     if a.get("q"):
         w.append("(f.tag ILIKE %s OR f.description ILIKE %s OR f.resolution ILIKE %s)")
         p += ["%" + a["q"] + "%"] * 3
-    sql = ("SELECT f.*, u.name inspector, c.name closer FROM findings f "
-           "JOIN users u ON u.id=f.inspector_id LEFT JOIN users c ON c.id=f.closed_by"
+    sql = ("SELECT f.*, COALESCE(u.name, f.inspector_name, 'Usuario eliminado') inspector, "
+           "CASE WHEN f.closed_at IS NOT NULL THEN COALESCE(c.name, f.closer_name, 'Usuario eliminado') END closer FROM findings f "
+           "LEFT JOIN users u ON u.id=f.inspector_id LEFT JOIN users c ON c.id=f.closed_by"
            + (" WHERE " + " AND ".join(w) if w else "")
            + " ORDER BY f.status='solucionado', CASE f.criticality WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END,"
              " f.inspected_at DESC, f.id DESC")
@@ -231,7 +229,7 @@ def login():
             flash("Demasiados intentos fallidos. Esperá 10 minutos.")
             return render_template("login.html")
         u = db().execute("SELECT * FROM users WHERE username=%s", (un,)).fetchone()
-        if u and check_password_hash(u["pw"], request.form.get("password", "")):
+        if u and u['active'] and check_password_hash(u["pw"], request.form.get("password", "")):
             run("DELETE FROM attempts WHERE username=%s", un)
             session.clear()
             session.update(uid=u["id"], name=u["name"], role=u["role"], csrf=secrets.token_hex(16))
@@ -254,17 +252,13 @@ def dashboard():
     st = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM findings GROUP BY 1")}
     by_crit = {r["k"]: r["n"] for r in rows("SELECT criticality k, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")}
     paths = locs()[1]
-    sec = {}
-    for r in rows("SELECT location_id, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1"):
-        parts = paths[r["location_id"]].split(" › ")
-        k = " › ".join(parts[:2]) if len(parts) > 1 else parts[0] + " (sin sector)"
-        sec[k] = sec.get(k, 0) + r["n"]
-    by_sector = sorted(sec.items(), key=lambda kv: (-kv[1], kv[0]))
+    by_area = sorted(((paths[r["location_id"]], r["n"]) for r in rows(
+        "SELECT location_id, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")), key=lambda kv: (-kv[1], kv[0]))
     old = one("SELECT COUNT(*) n FROM findings WHERE status='pendiente' AND CURRENT_DATE - inspected_at > 30")["n"]
     top = rows("SELECT id, tag, zone, criticality, location_id, inspected_at, description FROM findings "
                "WHERE status='pendiente' ORDER BY CASE criticality WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, inspected_at LIMIT 8")
     return render_template("dashboard.html", pend=st.get("pendiente", 0), sol=st.get("solucionado", 0),
-                           by_crit=by_crit, by_sector=by_sector, old=old, top=top, paths=paths)
+                           by_crit=by_crit, by_area=by_area, old=old, top=top, paths=paths)
 
 
 @app.route("/findings")
@@ -281,7 +275,7 @@ def export():
     wb = Workbook()
     ws = wb.active
     ws.title = "Hallazgos"
-    ws.append(["ID", "Ubicación", "TAG / equipo", "Zona", "Protección Ex", "Criticidad", "Estado", "Descripción",
+    ws.append(["ID", "Área", "TAG / equipo", "Zona", "Protección Ex", "Criticidad", "Estado", "Descripción",
                "Inspector", "Fecha inspección", "Resolución", "Cerrado por", "Fecha cierre", "Fotos antes", "Fotos después"])
     cnt = {}
     for r in rows("SELECT finding_id, kind, COUNT(*) n FROM photos GROUP BY 1, 2"):
@@ -300,30 +294,39 @@ def export():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+def equipment_list():
+    return rows("SELECT e.*, l.name area FROM equipment e JOIN locations l ON l.id=e.location_id ORDER BY lower(e.tag)")
+
+
 @app.route("/findings/new", methods=["GET", "POST"])
 @need()
 def new():
     lst, _ = locs()
     f = request.form
     if request.method == "POST":
-        if not (f.get("location_id", "").isdigit() and f.get("zone") in ZONES and f.get("criticality") in CRIT
+        eq = None
+        if f.get("equipment_id", "").isdigit():
+            eq = db().execute("SELECT * FROM equipment WHERE id=%s", (int(f["equipment_id"]),)).fetchone()
+        loc = f.get("location_id") or (str(eq["location_id"]) if eq else "")
+        if not (loc.isdigit() and f.get("zone") in ZONES and f.get("criticality") in CRIT
                 and f.get("description", "").strip()):
-            flash("Completá ubicación, zona, criticidad y descripción.")
+            flash("Completá área, zona, criticidad y descripción.")
         else:
-            r = run("INSERT INTO findings(location_id,tag,zone,protection,criticality,description,inspector_id,inspected_at)"
-                    " VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", int(f["location_id"]), f.get("tag", "").strip(), f["zone"],
-                    f.get("protection") if f.get("protection") in PROT else None, f["criticality"],
-                    f["description"].strip(), session["uid"], dt(f.get("inspected_at"))).fetchone()
+            r = run("INSERT INTO findings(location_id,tag,equipment_id,zone,protection,criticality,description,inspector_id,inspector_name,inspected_at)"
+                    " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", int(loc), eq["tag"] if eq else "", eq["id"] if eq else None,
+                    f["zone"], f.get("protection") if f.get("protection") in PROT else None, f["criticality"],
+                    f["description"].strip(), session["uid"], session["name"], dt(f.get("inspected_at"))).fetchone()
             add_photos(r["id"], "antes")
             return redirect(url_for("detail", fid=r["id"]))
-    return render_template("form.html", locs=lst, f=f, today=date.today().isoformat())
+    return render_template("form.html", locs=lst, equipment=equipment_list(), f=f, today=date.today().isoformat())
 
 
 @app.route("/findings/<int:fid>")
 @need()
 def detail(fid):
-    f = one("SELECT f.*, u.name inspector, c.name closer FROM findings f JOIN users u ON u.id=f.inspector_id "
-            "LEFT JOIN users c ON c.id=f.closed_by WHERE f.id=%s", fid)
+    f = one("SELECT f.*, COALESCE(u.name, f.inspector_name, 'Usuario eliminado') inspector, "
+            "CASE WHEN f.closed_at IS NOT NULL THEN COALESCE(c.name, f.closer_name, 'Usuario eliminado') END closer FROM findings f "
+            "LEFT JOIN users u ON u.id=f.inspector_id LEFT JOIN users c ON c.id=f.closed_by WHERE f.id=%s", fid)
     ph = {"antes": [], "despues": []}
     for p in rows("SELECT id, kind FROM photos WHERE finding_id=%s ORDER BY id", fid):
         ph[p["kind"]].append(p)
@@ -350,8 +353,8 @@ def close(fid):
     if not res:
         flash("Describí qué se reparó o cambió para poder cerrar el hallazgo.")
     else:
-        run("UPDATE findings SET status='solucionado', resolution=%s, closed_by=%s, closed_at=%s WHERE id=%s",
-            res, session["uid"], dt(request.form.get("closed_at")), fid)
+        run("UPDATE findings SET status='solucionado', resolution=%s, closed_by=%s, closer_name=%s, closed_at=%s WHERE id=%s",
+            res, session["uid"], session["name"], dt(request.form.get("closed_at")), fid)
         add_photos(fid, "despues")
     return redirect(url_for("detail", fid=fid))
 
@@ -373,36 +376,171 @@ def files(pid):
     return resp
 
 
-@app.route("/admin", methods=["GET", "POST"])
+def eq_fields(f):
+    tag, loc, zone, prot = f.get("tag", "").strip(), f.get("location_id", ""), f.get("zone"), f.get("protection")
+    if not tag or not loc.isdigit() or zone not in ZONES:
+        return None
+    return tag, f.get("description", "").strip(), int(loc), zone, prot if prot in PROT else None
+
+
+@app.route("/equipment", methods=["GET", "POST"])
+@need("cierre")
+def equipment():
+    if request.method == "POST":
+        v = eq_fields(request.form)
+        if not v:
+            flash("Completá tag, área y zona.")
+        else:
+            try:
+                run("INSERT INTO equipment(tag,description,location_id,zone,protection) VALUES(%s,%s,%s,%s,%s)", *v)
+                flash("Tag agregado.")
+            except psycopg.errors.UniqueViolation:
+                flash("Ya existe un tag con ese nombre.")
+            except psycopg.errors.ForeignKeyViolation:
+                flash("El área elegida no existe.")
+        return redirect(url_for("equipment"))
+    q = request.args.get("q", "").strip()
+    items = rows("SELECT e.*, l.name area, (SELECT COUNT(*) FROM findings f WHERE f.equipment_id=e.id) nf FROM equipment e "
+                 "JOIN locations l ON l.id=e.location_id WHERE (%s='' OR e.tag ILIKE %s OR e.description ILIKE %s OR l.name ILIKE %s) "
+                 "ORDER BY lower(e.tag)", q, "%" + q + "%", "%" + q + "%", "%" + q + "%")
+    return render_template("equipment.html", items=items, areas=locs()[0], q=q)
+
+
+@app.route("/equipment/<int:eid>/edit", methods=["GET", "POST"])
+@need("cierre")
+def equipment_edit(eid):
+    e = one("SELECT * FROM equipment WHERE id=%s", eid)
+    if request.method == "POST":
+        v = eq_fields(request.form)
+        if not v:
+            flash("Completá tag, área y zona.")
+        else:
+            try:
+                run("UPDATE equipment SET tag=%s, description=%s, location_id=%s, zone=%s, protection=%s WHERE id=%s", *v, eid)
+                run("UPDATE findings SET tag=%s WHERE equipment_id=%s", v[0], eid)
+                flash("Tag actualizado.")
+                return redirect(url_for("equipment"))
+            except psycopg.errors.UniqueViolation:
+                flash("Ya existe otro tag con ese nombre.")
+            except psycopg.errors.ForeignKeyViolation:
+                flash("El área elegida no existe.")
+    return render_template("equipment_edit.html", e=e, areas=locs()[0])
+
+
+@app.post("/equipment/<int:eid>/delete")
+@need("cierre")
+def equipment_delete(eid):
+    one("SELECT 1 FROM equipment WHERE id=%s", eid)
+    run("DELETE FROM equipment WHERE id=%s", eid)
+    flash("Tag eliminado. Los hallazgos ya cargados conservan su texto.")
+    return redirect(url_for("equipment"))
+
+
+@app.route("/areas", methods=["GET", "POST"])
 @need("admin")
-def admin():
-    lst, _ = locs()
+def areas():
     f = request.form
     if request.method == "POST":
-        if f.get("action") == "user":
-            un, nm, role, pw = f.get("username", "").strip().lower(), f.get("name", "").strip(), f.get("role"), f.get("password", "")
-            ex = db().execute("SELECT id FROM users WHERE username=%s", (un,)).fetchone()
-            if not un or not nm or role not in ROLES or (not ex and len(pw) < 8) or (pw and len(pw) < 8):
-                flash("Usuario, nombre y rol son obligatorios; la contraseña debe tener al menos 8 caracteres.")
-            elif ex:
-                if ex["id"] == session["uid"]:
-                    role = "admin"
-                run("UPDATE users SET name=%s, role=%s WHERE id=%s", nm, role, ex["id"])
-                if pw:
-                    run("UPDATE users SET pw=%s WHERE id=%s", generate_password_hash(pw), ex["id"])
-                flash("Usuario actualizado.")
-            else:
+        name, act = f.get("name", "").strip(), f.get("action")
+        if act == "add" and name:
+            run("INSERT INTO locations(name) VALUES(%s)", name)
+            flash("Área agregada.")
+        elif act == "rename" and name and f.get("id", "").isdigit():
+            run("UPDATE locations SET name=%s WHERE id=%s", name, int(f["id"]))
+            flash("Área renombrada.")
+        elif act == "delete" and f.get("id", "").isdigit():
+            try:
+                run("DELETE FROM locations WHERE id=%s", int(f["id"]))
+                flash("Área eliminada.")
+            except psycopg.errors.ForeignKeyViolation:
+                flash("No se puede eliminar: el área tiene tags u hallazgos asociados.")
+        else:
+            flash("Escribí un nombre.")
+        return redirect(url_for("areas"))
+    return render_template("areas.html", items=rows(
+        "SELECT l.id, l.name, (SELECT COUNT(*) FROM equipment e WHERE e.location_id=l.id) ne, "
+        "(SELECT COUNT(*) FROM findings f WHERE f.location_id=l.id) nf FROM locations l ORDER BY lower(l.name)"))
+
+
+@app.route("/users", methods=["GET", "POST"])
+@need("admin")
+def users():
+    if request.method == "POST":
+        f = request.form
+        un, nm, role, pw = f.get("username", "").strip().lower(), f.get("name", "").strip(), f.get("role"), f.get("password", "")
+        if not un or not nm or role not in ROLES or len(pw) < 8:
+            flash("Usuario, nombre y rol son obligatorios; la contraseña debe tener al menos 8 caracteres.")
+        else:
+            try:
                 run("INSERT INTO users(username,name,pw,role) VALUES(%s,%s,%s,%s)", un, nm, generate_password_hash(pw), role)
                 flash("Usuario creado.")
-        elif f.get("action") == "loc":
-            depth = {i: d for i, _, d in lst}
-            parent = int(f["parent"]) if f.get("parent", "").isdigit() else None
-            if not f.get("name", "").strip():
-                flash("Escribí un nombre.")
-            elif parent and depth.get(parent, 9) >= len(LEVELS):
-                flash("Un equipo es el último nivel y no admite elementos dentro.")
-            else:
-                run("INSERT INTO locations(parent_id,name) VALUES(%s,%s)", parent, f["name"].strip())
-                flash("Ubicación agregada.")
-        return redirect(url_for("admin"))
-    return render_template("admin.html", users=rows("SELECT * FROM users ORDER BY username"), locs=locs()[0])
+            except psycopg.errors.UniqueViolation:
+                flash("Ya existe un usuario con ese nombre de usuario.")
+        return redirect(url_for("users"))
+    return render_template("users.html", items=rows(
+        "SELECT u.*, (SELECT COUNT(*) FROM findings f WHERE f.inspector_id=u.id) nf FROM users u ORDER BY lower(u.username)"))
+
+
+@app.route("/users/<int:uid>/edit", methods=["GET", "POST"])
+@need("admin")
+def user_edit(uid):
+    u = one("SELECT * FROM users WHERE id=%s", uid)
+    if request.method == "POST":
+        f = request.form
+        un, nm, role, pw = f.get("username", "").strip().lower(), f.get("name", "").strip(), f.get("role"), f.get("password", "")
+        active = bool(f.get("active"))
+        if uid == session["uid"]:
+            role, active = "admin", True
+        if not un or not nm or role not in ROLES or (pw and len(pw) < 8):
+            flash("Usuario, nombre y rol son obligatorios; la contraseña nueva debe tener al menos 8 caracteres.")
+        else:
+            try:
+                run("UPDATE users SET username=%s, name=%s, role=%s, active=%s WHERE id=%s", un, nm, role, active, uid)
+                run("UPDATE findings SET inspector_name=%s WHERE inspector_id=%s", nm, uid)
+                run("UPDATE findings SET closer_name=%s WHERE closed_by=%s", nm, uid)
+                if pw:
+                    run("UPDATE users SET pw=%s WHERE id=%s", generate_password_hash(pw), uid)
+                    run("DELETE FROM attempts WHERE username=%s", un)
+                flash("Usuario actualizado.")
+                return redirect(url_for("users"))
+            except psycopg.errors.UniqueViolation:
+                flash("Ya existe otro usuario con ese nombre de usuario.")
+    return render_template("user_edit.html", u=u, me=(uid == session["uid"]))
+
+
+@app.post("/users/<int:uid>/delete")
+@need("admin")
+def user_delete(uid):
+    if uid == session["uid"]:
+        flash("No podés eliminar tu propio usuario.")
+        return redirect(url_for("users"))
+    u = one("SELECT username FROM users WHERE id=%s", uid)
+    run("DELETE FROM attempts WHERE username=%s", u["username"])
+    run("DELETE FROM users WHERE id=%s", uid)
+    flash("Usuario eliminado. Sus hallazgos se conservan con su nombre.")
+    return redirect(url_for("users"))
+
+
+@app.route("/password", methods=["GET", "POST"])
+@need()
+def password():
+    if request.method == "POST":
+        f = request.form
+        u = one("SELECT username, pw FROM users WHERE id=%s", session["uid"])
+        if one("SELECT COUNT(*) n FROM attempts WHERE username=%s AND at > now() - interval '10 minutes'", u["username"])["n"] >= 5:
+            flash("Demasiados intentos fallidos. Esperá 10 minutos.")
+        elif not check_password_hash(u["pw"], f.get("current", "")):
+            run("INSERT INTO attempts(username) VALUES(%s)", u["username"])
+            flash("La contraseña actual no es correcta.")
+        elif len(f.get("new", "")) < 8:
+            flash("La contraseña nueva debe tener al menos 8 caracteres.")
+        elif f.get("new") != f.get("repeat"):
+            flash("Las contraseñas nuevas no coinciden.")
+        elif f.get("new") == f.get("current"):
+            flash("La contraseña nueva debe ser distinta de la actual.")
+        else:
+            run("UPDATE users SET pw=%s WHERE id=%s", generate_password_hash(f["new"]), session["uid"])
+            run("DELETE FROM attempts WHERE username=%s", u["username"])
+            flash("Contraseña actualizada.")
+            return redirect(url_for("dashboard"))
+    return render_template("password.html")

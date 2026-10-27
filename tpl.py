@@ -1,25 +1,6 @@
 """Plantillas HTML (Jinja2). Se editan aquí, en este mismo archivo."""
 TEMPLATES = {}
 
-TEMPLATES['admin.html'] = r'''{% extends "base.html" %}{% block c %}
-<h2>Administración</h2>
-<div class="two">
-<div class="box"><h3 style="margin-top:0">Ubicaciones</h3>
-<form method="post"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="loc">
-<label>Dentro de</label><select name="parent"><option value="">— Nueva planta (nivel superior) —</option>{% for i,p,d in locs if d < LEVELS|length %}<option value="{{ i }}">{{ p }}</option>{% endfor %}</select>
-<label>Nombre</label><input name="name" required>
-<p class="mu">Niveles: {{ LEVELS|join(' › ') }}.</p><p><button class="btn y">Agregar ubicación</button></p></form>
-{% for i,p,d in locs %}<div style="padding-left:{{ (d-1)*1.2 }}rem">{{ p.split(' › ')[-1] }} <span class="mu">({{ LEVELS[d-1] }})</span></div>{% else %}<p class="mu">Todavía no hay ubicaciones.</p>{% endfor %}</div>
-<div class="box"><h3 style="margin-top:0">Usuarios</h3>
-<form method="post"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="user">
-<label>Usuario</label><input name="username" required><label>Nombre completo</label><input name="name" required>
-<label>Rol</label><select name="role">{% for r in ROLES %}<option value="{{ r }}">{{ ROLE_LABEL[r] }}</option>{% endfor %}</select>
-<label>Contraseña <span class="mu">(si el usuario ya existe, vacía = no cambia)</span></label><input name="password" type="password" autocomplete="new-password">
-<p><button class="btn y">Guardar usuario</button></p></form>
-{% for u in users %}<div>{{ u.username }} · {{ u.name }} <span class="mu">({{ ROLE_LABEL[u.role] }})</span></div>{% endfor %}</div>
-</div>{% endblock %}
-'''
-
 TEMPLATES['base.html'] = r'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -69,8 +50,8 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1rem;margin:0}dt
 </style></head><body>
 <header><b>Inspecciones HAZLOC</b>
 {% if session.uid %}<a href="{{ url_for('dashboard') }}">Resumen</a><a href="{{ url_for('listing') }}">Hallazgos</a>
-<a href="{{ url_for('new') }}">Nuevo hallazgo</a>{% if session.role=='admin' %}<a href="{{ url_for('admin') }}">Administración</a>{% endif %}
-<span class="r">{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
+<a href="{{ url_for('new') }}">Nuevo hallazgo</a>{% if can_close %}<a href="{{ url_for('equipment') }}">Tags</a>{% endif %}{% if session.role=='admin' %}<a href="{{ url_for('areas') }}">Áreas</a><a href="{{ url_for('users') }}">Usuarios</a>{% endif %}
+<span class="r"><a href="{{ url_for('password') }}">Cambiar contraseña</a>{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
 </header><main>
 {% for m in get_flashed_messages() %}<div class="msg">{{ m }}</div>{% endfor %}
 {% block c %}{% endblock %}
@@ -98,8 +79,8 @@ TEMPLATES['dashboard.html'] = r'''{% extends "base.html" %}{% block c %}
 <div class="two">
  <div class="box"><h3 style="margin-top:0">Pendientes por criticidad</h3>
  {% for c in CRIT %}{% set n = by_crit.get(c,0) %}<div class="bar"><span><span class="pill {{c}}">{{ c }}</span></span><i style="width:{{ n*100/(pend or 1) }}%;background:var(--{{c}})"></i><b>{{ n }}</b></div>{% endfor %}</div>
- <div class="box"><h3 style="margin-top:0">Pendientes por sector</h3>
- {% for label, n in by_sector %}<div class="bar"><span style="width:10rem;font-size:.9rem">{{ label }}</span><i style="width:{{ n*100/(pend or 1) }}%"></i><b>{{ n }}</b></div>{% else %}<p class="mu">No hay pendientes.</p>{% endfor %}</div>
+ <div class="box"><h3 style="margin-top:0">Pendientes por área</h3>
+ {% for label, n in by_area %}<div class="bar"><span style="width:10rem;font-size:.9rem">{{ label }}</span><i style="width:{{ n*100/(pend or 1) }}%"></i><b>{{ n }}</b></div>{% else %}<p class="mu">No hay pendientes.</p>{% endfor %}</div>
 </div>
 <h3>Pendientes más urgentes</h3>
 {% if top %}<div class="scroll"><table>
@@ -113,7 +94,7 @@ TEMPLATES['detail.html'] = r'''{% extends "base.html" %}{% block c %}
 {% macro gallery(items) %}{% if items %}<div class="photos">{% for p in items %}<a href="{{ url_for('files', pid=p.id) }}" target="_blank"><img loading="lazy" src="{{ url_for('files', pid=p.id) }}" alt="Foto {{ p.id }}"></a>{% endfor %}</div>{% else %}<p class="mu">Sin fotos.</p>{% endif %}{% endmacro %}
 <h2><span class="tag">{{ f.tag or 'Hallazgo #%d'|format(f.id) }}</span> <span class="pill {{ f.criticality }}">{{ f.criticality }}</span> <span class="pill {{ f.status }}">{{ f.status }}</span></h2>
 <div class="box"><dl>
-<dt>Ubicación</dt><dd>{{ path }}</dd><dt>Zona</dt><dd>{{ f.zone }}{% if f.protection %} · {{ f.protection }}{% endif %}</dd>
+<dt>Área</dt><dd>{{ path }}</dd><dt>Zona</dt><dd>{{ f.zone }}{% if f.protection %} · {{ f.protection }}{% endif %}</dd>
 <dt>Inspección</dt><dd>{{ f.inspected_at }} · {{ f.inspector }}</dd>
 {% if f.status=='solucionado' %}<dt>Cierre</dt><dd>{{ f.closed_at }} · {{ f.closer }}</dd>{% endif %}</dl></div>
 <div class="two">
@@ -136,19 +117,26 @@ TEMPLATES['detail.html'] = r'''{% extends "base.html" %}{% block c %}
 
 TEMPLATES['form.html'] = r'''{% extends "base.html" %}{% block c %}
 <h2>Nuevo hallazgo</h2>
-{% if not locs %}<div class="msg">Todavía no hay ubicaciones cargadas. {% if session.role=='admin' %}<a href="{{ url_for('admin') }}">Agregalas en Administración</a>.{% else %}Pedile a un administrador que las cargue.{% endif %}</div>{% endif %}
+{% if not locs %}<div class="msg">Todavía no hay áreas cargadas. {% if session.role=='admin' %}<a href="{{ url_for('areas') }}">Agregalas en Áreas</a>.{% else %}Pedile a un administrador que las cargue.{% endif %}</div>{% endif %}
 <form method="post" enctype="multipart/form-data" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
-<label>Ubicación</label><select name="location_id" required><option value="">Elegir…</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if f.get('location_id')==i|string }}>{{ p }}</option>{% endfor %}</select>
+<label>Tag / equipo</label>
+<select name="equipment_id" id="eq"><option value="">— Sin tag —</option>{% for e in equipment %}<option value="{{ e.id }}" data-loc="{{ e.location_id }}" data-zone="{{ e.zone }}" data-prot="{{ e.protection or '' }}" {{ 'selected' if f.get('equipment_id')==e.id|string }}>{{ e.tag }} · {{ e.area }}{% if e.description %} · {{ e.description }}{% endif %}</option>{% endfor %}</select>
+<p class="mu" style="margin:.2rem 0 0">Al elegir un tag se completan área, zona y protección. {% if can_close %}<a href="{{ url_for('equipment') }}">Administrar tags</a>.{% else %}Si falta un tag, pedile a un supervisor que lo cargue.{% endif %}</p>
 <div class="row">
-<div><label>TAG o equipo afectado</label><input name="tag" class="tag" value="{{ f.get('tag','') }}"></div>
-<div><label>Zona</label><select name="zone" required><option value="">Elegir…</option>{% for z in ZONES %}<option {{ 'selected' if f.get('zone')==z }}>{{ z }}</option>{% endfor %}</select></div>
-<div><label>Protección Ex</label><select name="protection"><option value="">—</option>{% for p in PROT %}<option {{ 'selected' if f.get('protection')==p }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Área</label><select name="location_id" id="loc" required><option value="">Elegir…</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if f.get('location_id')==i|string }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Zona</label><select name="zone" id="zone" required><option value="">Elegir…</option>{% for z in ZONES %}<option {{ 'selected' if f.get('zone')==z }}>{{ z }}</option>{% endfor %}</select></div>
+<div><label>Protección Ex</label><select name="protection" id="prot"><option value="">—</option>{% for p in PROT %}<option {{ 'selected' if f.get('protection')==p }}>{{ p }}</option>{% endfor %}</select></div>
 <div><label>Criticidad</label><select name="criticality" required><option value="">Elegir…</option>{% for c in CRIT %}<option {{ 'selected' if f.get('criticality')==c }}>{{ c }}</option>{% endfor %}</select></div>
 <div><label>Fecha de inspección</label><input type="date" name="inspected_at" value="{{ f.get('inspected_at') or today }}"></div>
 </div>
 <label>Qué se encontró</label><textarea name="description" required>{{ f.get('description','') }}</textarea>
 <label>Fotos del estado encontrado</label><input type="file" name="photos" accept="image/*" multiple>
-<p><button class="btn y">Guardar hallazgo</button> <a class="btn l" href="{{ url_for('listing') }}">Cancelar</a></p></form>{% endblock %}
+<p><button class="btn y">Guardar hallazgo</button> <a class="btn l" href="{{ url_for('listing') }}">Cancelar</a></p></form>
+<script>
+const eq=document.getElementById('eq');
+eq.addEventListener('change',()=>{const o=eq.selectedOptions[0];if(!o.value)return;
+document.getElementById('loc').value=o.dataset.loc;document.getElementById('zone').value=o.dataset.zone;document.getElementById('prot').value=o.dataset.prot});
+</script>{% endblock %}
 '''
 
 TEMPLATES['list.html'] = r'''{% extends "base.html" %}{% block c %}
@@ -156,7 +144,7 @@ TEMPLATES['list.html'] = r'''{% extends "base.html" %}{% block c %}
 <form class="box" method="get">
 <div class="row">
 <div><label>Buscar</label><input name="q" placeholder="TAG o texto" value="{{ request.args.q or '' }}"></div>
-<div><label>Lugar</label><select name="loc"><option value="">Todos</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if request.args.loc==i|string }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Área</label><select name="loc"><option value="">Todos</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if request.args.loc==i|string }}>{{ p }}</option>{% endfor %}</select></div>
 <div><label>Zona</label><select name="zone"><option value="">Todas</option>{% for z in ZONES %}<option {{ 'selected' if request.args.zone==z }}>{{ z }}</option>{% endfor %}</select></div>
 <div><label>Criticidad</label><select name="crit"><option value="">Todas</option>{% for c in CRIT %}<option {{ 'selected' if request.args.crit==c }}>{{ c }}</option>{% endfor %}</select></div>
 <div><label>Estado</label><select name="status"><option value="">Todos</option>{% for s in ['pendiente','solucionado'] %}<option {{ 'selected' if request.args.status==s }}>{{ s }}</option>{% endfor %}</select></div>
@@ -191,4 +179,84 @@ TEMPLATES['setup.html'] = r'''{% extends "base.html" %}{% block c %}
 <label>Usuario</label><input name="username" autocomplete="username"><label>Nombre completo</label><input name="name">
 <label>Contraseña (mínimo 8 caracteres)</label><input name="password" type="password" autocomplete="new-password">
 <p><button class="btn y">Crear administrador</button></p></form>{% endblock %}
+'''
+
+TEMPLATES['equipment.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Tags de equipos <small>({{ items|length }})</small></h2>
+{% if not areas %}<div class="msg">Primero hay que cargar al menos un área. {% if session.role=='admin' %}<a href="{{ url_for('areas') }}">Ir a Áreas</a>.{% endif %}</div>{% endif %}
+<form method="post" class="box"><h3>Agregar tag</h3><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<div class="row">
+<div><label>Tag</label><input name="tag" class="tag" required value=""></div>
+<div><label>Descripción</label><input name="description" value=""></div>
+<div><label>Área</label><select name="location_id" required><option value="">Elegir…</option>{% for i,p,d in areas %}<option value="{{ i }}" >{{ p }}</option>{% endfor %}</select></div>
+<div><label>Zona</label><select name="zone" required><option value="">Elegir…</option>{% for z in ZONES %}<option >{{ z }}</option>{% endfor %}</select></div>
+<div><label>Protección Ex</label><select name="protection"><option value="">—</option>{% for p in PROT %}<option >{{ p }}</option>{% endfor %}</select></div>
+</div>
+<p><button class="btn y">Agregar tag</button></p></form>
+<form class="box" method="get"><label>Buscar</label><div class="row"><input name="q" value="{{ q }}" placeholder="Tag, descripción o área"><div><button class="btn">Buscar</button> <a class="btn l" href="{{ url_for('equipment') }}">Limpiar</a></div></div></form>
+{% if items %}<div class="scroll"><table><tr><th>Tag</th><th>Área</th><th>Zona</th><th>Hallazgos</th><th></th></tr>
+{% for e in items %}<tr><td><b class="tag">{{ e.tag }}</b><div class="mu">{{ e.description or '' }}</div></td><td>{{ e.area }}</td>
+<td>{{ e.zone }}<div class="mu">{{ e.protection or '' }}</div></td><td>{{ e.nf }}</td>
+<td style="white-space:nowrap"><a class="btn l" href="{{ url_for('equipment_edit', eid=e.id) }}">Editar</a>
+<form method="post" action="{{ url_for('equipment_delete', eid=e.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar este tag? Los hallazgos ya cargados conservan su texto.')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button class="btn l">Borrar</button></form></td></tr>{% endfor %}
+</table></div>{% else %}<p class="mu">No hay tags cargados todavía.</p>{% endif %}{% endblock %}
+'''
+
+TEMPLATES['equipment_edit.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Editar tag <span class="tag">{{ e.tag }}</span></h2>
+<form method="post" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<div class="row">
+<div><label>Tag</label><input name="tag" class="tag" required value="{{ e.tag }}"></div>
+<div><label>Descripción</label><input name="description" value="{{ e.description or '' }}"></div>
+<div><label>Área</label><select name="location_id" required><option value="">Elegir…</option>{% for i,p,d in areas %}<option value="{{ i }}" {{ 'selected' if e.location_id==i }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Zona</label><select name="zone" required><option value="">Elegir…</option>{% for z in ZONES %}<option {{ 'selected' if e.zone==z }}>{{ z }}</option>{% endfor %}</select></div>
+<div><label>Protección Ex</label><select name="protection"><option value="">—</option>{% for p in PROT %}<option {{ 'selected' if e.protection==p }}>{{ p }}</option>{% endfor %}</select></div>
+</div>
+<p class="mu">Si cambiás el nombre del tag, también se actualiza en los hallazgos ya cargados.</p>
+<p><button class="btn y">Guardar cambios</button> <a class="btn l" href="{{ url_for('equipment') }}">Cancelar</a></p></form>{% endblock %}
+'''
+
+TEMPLATES['areas.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Áreas</h2>
+<form method="post" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add">
+<label>Nueva área</label><div class="row"><input name="name" required placeholder="Ej.: Sala de bombas"><div><button class="btn y">Agregar área</button></div></div></form>
+{% if items %}<div class="scroll"><table><tr><th>Nombre</th><th>Tags</th><th>Hallazgos</th><th></th></tr>
+{% for a in items %}<tr><td><form method="post" style="display:flex;gap:.4rem"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{ a.id }}"><input name="name" value="{{ a.name }}" required><button class="btn l">Renombrar</button></form></td>
+<td>{{ a.ne }}</td><td>{{ a.nf }}</td>
+<td><form method="post" onsubmit="return confirm('¿Eliminar esta área?')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ a.id }}"><button class="btn l">Borrar</button></form></td></tr>{% endfor %}
+</table></div><p class="mu">Un área con tags u hallazgos asociados no se puede borrar.</p>{% else %}<p class="mu">Todavía no hay áreas.</p>{% endif %}{% endblock %}
+'''
+
+TEMPLATES['users.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Usuarios</h2>
+<div class="scroll"><table><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Hallazgos</th><th></th></tr>
+{% for u in items %}<tr><td class="tag">{{ u.username }}</td><td>{{ u.name }}</td><td>{{ ROLE_LABEL[u.role] }}</td>
+<td>{{ 'Activo' if u.active else 'Desactivado' }}</td><td>{{ u.nf }}</td><td style="white-space:nowrap"><a class="btn l" href="{{ url_for('user_edit', uid=u.id) }}">Editar</a>
+{% if u.id != session.uid %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar este usuario? Sus hallazgos se conservan con su nombre y no podrá volver a ingresar.')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button class="btn l">Eliminar</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+<form method="post" class="box" style="margin-top:1rem"><h3>Agregar usuario</h3><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<div class="row"><div><label>Usuario</label><input name="username" required autocomplete="off"></div><div><label>Nombre completo</label><input name="name" required></div>
+<div><label>Rol</label><select name="role">{% for r in ROLES %}<option value="{{ r }}">{{ ROLE_LABEL[r] }}</option>{% endfor %}</select></div>
+<div><label>Contraseña (mín. 8)</label><input name="password" type="password" autocomplete="new-password" required></div></div>
+<p><button class="btn y">Crear usuario</button></p></form>{% endblock %}
+'''
+
+TEMPLATES['user_edit.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Editar usuario <span class="tag">{{ u.username }}</span></h2>
+<form method="post" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<div class="row"><div><label>Usuario</label><input name="username" required value="{{ u.username }}"></div><div><label>Nombre completo</label><input name="name" required value="{{ u.name }}"></div>
+<div><label>Rol</label><select name="role" {{ 'disabled' if me }}>{% for r in ROLES %}<option value="{{ r }}" {{ 'selected' if u.role==r }}>{{ ROLE_LABEL[r] }}</option>{% endfor %}</select></div>
+<div><label>Contraseña nueva <span class="mu">(vacía = no cambia)</span></label><input name="password" type="password" autocomplete="new-password"></div></div>
+<label style="display:flex;gap:.5rem;align-items:center;font-weight:400"><input type="checkbox" name="active" value="1" style="width:auto" {{ 'checked' if u.active }} {{ 'disabled' if me }}> Usuario activo (si se desactiva, no puede ingresar)</label>
+{% if me %}<p class="mu">Tu propio usuario siempre queda como administrador y activo.</p>{% endif %}
+<p><button class="btn y">Guardar cambios</button> <a class="btn l" href="{{ url_for('users') }}">Cancelar</a></p></form>
+{% if not me %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}" onsubmit="return confirm('¿Eliminar este usuario? Sus hallazgos se conservan con su nombre y no podrá volver a ingresar.')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button class="btn l">Eliminar usuario</button></form>{% endif %}{% endblock %}
+'''
+
+TEMPLATES['password.html'] = r'''{% extends "base.html" %}{% block c %}
+<form method="post" class="box" style="max-width:420px;margin:1rem auto">
+<h2>Cambiar contraseña</h2><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<label>Contraseña actual</label><input name="current" type="password" autocomplete="current-password" required>
+<label>Contraseña nueva (mínimo 8 caracteres)</label><input name="new" type="password" autocomplete="new-password" required>
+<label>Repetir contraseña nueva</label><input name="repeat" type="password" autocomplete="new-password" required>
+<p><button class="btn y">Guardar contraseña</button> <a class="btn l" href="{{ url_for('dashboard') }}">Cancelar</a></p></form>{% endblock %}
 '''
