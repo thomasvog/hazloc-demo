@@ -33,7 +33,7 @@ app.config.update(
 )
 
 AREAS = ["Polímeros", "Extrusión", "Unidad 500", "Servicios", "Bagging"]  # áreas fijas
-ZONES = ["0", "1", "2", "20", "21", "22"]
+ZONES = ["0", "1", "2", "20", "21", "22", "Segura"]
 CRIT = ["alta", "media", "baja"]
 PROT = ["Ex d", "Ex e", "Ex i", "Ex p", "Ex n", "Ex m", "Ex o", "Ex q", "Ex t", "Otro / N.A."]
 ROLES = {"carga": 1, "cierre": 2, "admin": 3}
@@ -63,6 +63,15 @@ SCHEMA = [
        "ALTER TABLE findings DROP CONSTRAINT findings_%s_fkey; "
        "ALTER TABLE findings ADD CONSTRAINT findings_%s_fkey FOREIGN KEY (%s) REFERENCES users(id) ON DELETE SET NULL; "
        "END IF; END $$") % (c, c, c, c) for c in ("inspector_id", "closed_by")],
+    """CREATE TABLE IF NOT EXISTS declassifications(id SERIAL PRIMARY KEY, location_id INT NOT NULL REFERENCES locations(id),
+       reason TEXT NOT NULL, description TEXT NOT NULL, done_at DATE NOT NULL, responsible TEXT NOT NULL,
+       created_by INT REFERENCES users(id) ON DELETE SET NULL, set_safe BOOLEAN NOT NULL DEFAULT FALSE)""",
+    """CREATE TABLE IF NOT EXISTS declass_tags(id SERIAL PRIMARY KEY, declass_id INT NOT NULL REFERENCES declassifications(id) ON DELETE CASCADE,
+       equipment_id INT REFERENCES equipment(id) ON DELETE SET NULL, tag TEXT NOT NULL, prev_zone TEXT)""",
+    """CREATE TABLE IF NOT EXISTS declass_photos(id SERIAL PRIMARY KEY, declass_id INT NOT NULL REFERENCES declassifications(id) ON DELETE CASCADE,
+       kind TEXT NOT NULL, data BYTEA NOT NULL, created_at DATE NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS ix_dt ON declass_tags(declass_id)",
+    "CREATE INDEX IF NOT EXISTS ix_dp ON declass_photos(declass_id)",
     "CREATE INDEX IF NOT EXISTS ix_f ON findings(status, criticality, zone, location_id)",
     "CREATE INDEX IF NOT EXISTS ix_p ON photos(finding_id)",
 ]
@@ -212,9 +221,9 @@ def findings():
     return rows(sql, *p)
 
 
-def add_photos(fid, kind):
+def add_photos(fid, kind, tbl="photos", col="finding_id", field="photos"):
     n = 0
-    for f in request.files.getlist("photos"):
+    for f in request.files.getlist(field):
         if not f.filename:
             continue
         try:
@@ -225,7 +234,7 @@ def add_photos(fid, kind):
             continue
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=80)
-        run("INSERT INTO photos(finding_id,kind,data,created_at) VALUES(%s,%s,%s,%s)",
+        run("INSERT INTO %s(%s,kind,data,created_at) VALUES(%%s,%%s,%%s,%%s)" % (tbl, col),
             fid, kind, buf.getvalue(), date.today())
         n += 1
     return n
@@ -648,6 +657,8 @@ def import_tags(f, save):
             errs.append((n, "área «%s» no válida" % area if area else "falta el área"))
             continue
         z = re.sub(r"^(zona|zone|z)\s*", "", _norm(zone)).strip()
+        if z in ("segura", "no clasificada", "safe"):
+            z = "Segura"
         if z not in ZONES:
             errs.append((n, "zona «%s» no válida" % zone if zone else "falta la zona"))
             continue
@@ -725,3 +736,84 @@ def equipment_template():
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name="planilla_tags.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ---------- desclasificación de áreas ----------
+@app.route("/declass")
+@need()
+def declass():
+    a, w, p = request.args, [], []
+    if a.get("loc", "").isdigit():
+        w.append("d.location_id=%s")
+        p.append(int(a["loc"]))
+    if a.get("q"):
+        w.append("(d.reason ILIKE %s OR d.description ILIKE %s OR d.responsible ILIKE %s OR EXISTS "
+                 "(SELECT 1 FROM declass_tags t WHERE t.declass_id=d.id AND t.tag ILIKE %s))")
+        p += ["%" + a["q"] + "%"] * 4
+    items = rows("SELECT d.*, l.name area, (SELECT string_agg(t.tag, ', ' ORDER BY t.tag) FROM declass_tags t WHERE t.declass_id=d.id) tags, "
+                 "(SELECT COUNT(*) FROM declass_tags t WHERE t.declass_id=d.id) nt FROM declassifications d "
+                 "JOIN locations l ON l.id=d.location_id" + (" WHERE " + " AND ".join(w) if w else "")
+                 + " ORDER BY d.done_at DESC, d.id DESC", *p)
+    return render_template("declass.html", items=items, locs=locs()[0])
+
+
+@app.route("/declass/new", methods=["GET", "POST"])
+@need()
+def declass_new():
+    f = request.form
+    if request.method == "POST":
+        ids = sorted({int(x) for x in f.getlist("equipment_id") if x.isdigit()})
+        loc = f.get("location_id", "")
+        reason, desc, resp = f.get("reason", "").strip(), f.get("description", "").strip(), f.get("responsible", "").strip()
+        eqs = db().execute("SELECT id, tag, zone FROM equipment WHERE id = ANY(%s) AND location_id=%s",
+                           (ids, int(loc))).fetchall() if loc.isdigit() and ids else []
+        if not (loc.isdigit() and reason and desc and resp):
+            flash("Completá área, motivo, trabajo realizado y responsable.")
+        elif not eqs or len(eqs) != len(ids):
+            flash("Elegí al menos un tag del área seleccionada.")
+        else:
+            with db().transaction():
+                did = run("INSERT INTO declassifications(location_id,reason,description,done_at,responsible,created_by,set_safe) "
+                          "VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id", int(loc), reason, desc, dt(f.get("done_at")), resp,
+                          session["uid"], bool(f.get("set_safe"))).fetchone()["id"]
+                db().cursor().executemany("INSERT INTO declass_tags(declass_id,equipment_id,tag,prev_zone) VALUES(%s,%s,%s,%s)",
+                                          [(did, e["id"], e["tag"], e["zone"]) for e in eqs])
+                if f.get("set_safe"):
+                    run("UPDATE equipment SET zone='Segura' WHERE id = ANY(%s)", [e["id"] for e in eqs])
+            add_photos(did, "antes", "declass_photos", "declass_id", "photos_antes")
+            add_photos(did, "despues", "declass_photos", "declass_id", "photos_despues")
+            return redirect(url_for("declass_detail", did=did))
+    return render_template("declass_form.html", locs=locs()[0], equipment=equipment_list(), f=f,
+                           today=date.today().isoformat(), me=session["name"])
+
+
+@app.route("/declass/<int:did>")
+@need()
+def declass_detail(did):
+    d = one("SELECT d.*, l.name area FROM declassifications d JOIN locations l ON l.id=d.location_id WHERE d.id=%s", did)
+    ph = {"antes": [], "despues": []}
+    for p in rows("SELECT id, kind FROM declass_photos WHERE declass_id=%s ORDER BY id", did):
+        ph[p["kind"]].append(p)
+    return render_template("declass_detail.html", d=d, ph=ph,
+                           tags=rows("SELECT * FROM declass_tags WHERE declass_id=%s ORDER BY tag", did))
+
+
+@app.post("/declass/<int:did>/photos")
+@need()
+def declass_add_photos(did):
+    one("SELECT 1 FROM declassifications WHERE id=%s", did)
+    kind = request.form.get("kind")
+    if kind not in ("antes", "despues"):
+        abort(400)
+    if not add_photos(did, kind, "declass_photos", "declass_id"):
+        flash("No se agregó ninguna foto.")
+    return redirect(url_for("declass_detail", did=did))
+
+
+@app.route("/dfiles/<int:pid>")
+@need()
+def dfiles(pid):
+    r = one("SELECT data FROM declass_photos WHERE id=%s", pid)
+    resp = send_file(io.BytesIO(r["data"]), mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp

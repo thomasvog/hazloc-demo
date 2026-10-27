@@ -21,3 +21,5 @@ Aplicación Flask con base de datos Postgres. Los hallazgos y las fotos se guard
 - Las plantillas HTML están dentro de `tpl.py`.
 - Para cambiar la lista de áreas hay que editar `AREAS` al inicio de `app.py`.
 - Importar tags (solo administrador): Tags › *Importar planilla*. Acepta .xlsx o .csv con las columnas Tag, Descripción, Área, Zona y Protección Ex. Tiene un botón para revisar sin guardar y una planilla modelo descargable. Los tags que ya existen se actualizan.
+- Desclasificaciones (menú › *Desclasificaciones*, todos los roles): registran el trabajo, el motivo, la fecha, el responsable, los tags afectados y las fotos del antes y del después. Una casilla permite cambiar la zona de esos tags a «Segura»; se guarda la zona anterior de cada uno.
+- Las zonas posibles son 0, 1, 2, 20, 21, 22 y Segura (también en la importación de tags).

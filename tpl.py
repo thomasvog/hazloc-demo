@@ -51,13 +51,15 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1rem;margin:0}dt
 header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;padding:0;border:1px solid #ffffff55}
 #mn{position:absolute;top:calc(100% + .45rem);left:0;z-index:30;min-width:15rem;background:var(--pa);color:var(--tx);border:1px solid var(--ln);border-radius:6px;box-shadow:0 8px 24px #0004;padding:.3rem}
 #mn[hidden]{display:none}
+.ck{display:flex;gap:.6rem;align-items:center;font-weight:400;margin:0;padding:.45rem .6rem;border-bottom:1px solid var(--ln)}.ck input{width:auto}.ck[hidden]{display:none}
+#tl{max-height:18rem;overflow:auto;border:1px solid var(--ib);border-radius:6px;background:var(--in)}
 #mn .sep{border-top:1px solid var(--ln);margin:.3rem .4rem}
 #mn a{display:block;color:var(--tx);padding:.65rem .8rem;border-radius:4px;border-left:4px solid transparent}
 #mn a:hover{background:var(--bg)}#mn a[aria-current]{border-left-color:var(--ye);font-weight:700;background:var(--bg)}
 </style></head><body>
 {% set ep = request.endpoint or '' %}{% macro it(url, label, on) %}<a href="{{ url }}" {{ 'aria-current=page' if on }}>{{ label }}</a>{% endmacro %}
 <header>{% if session.uid %}<div class="menu"><button type="button" id="mb" class="hb" aria-label="Menú" aria-expanded="false" aria-controls="mn"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></button>
-<nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{% if can_close %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
+<nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{{ it(url_for('declass'), 'Desclasificaciones', ep in ('declass','declass_new','declass_detail')) }}{% if can_close %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
 <b>Inspecciones HAZLOC</b>
 {% if session.uid %}<span class="r">{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
 </header><main>
@@ -279,7 +281,7 @@ TEMPLATES['equipment_import.html'] = r'''{% extends "base.html" %}{% block c %}
 <form method="post" enctype="multipart/form-data" class="box">
 <input type="hidden" name="_csrf" value="{{ session.csrf }}">
 <label>Archivo (.xlsx o .csv)</label><input type="file" name="file" accept=".xlsx,.csv,.txt" required>
-<p class="mu">Columnas, en este orden o con estos títulos en la primera fila: <b>Tag</b>, Descripción, <b>Área</b>, <b>Zona</b>, Protección Ex. Son obligatorios Tag, Área y Zona. Se lee la primera hoja del archivo.<br>
+<p class="mu">Columnas, en este orden o con estos títulos en la primera fila: <b>Tag</b>, Descripción, <b>Área</b>, <b>Zona</b>, Protección Ex. Son obligatorios Tag, Área y Zona (0, 1, 2, 20, 21, 22 o Segura). Se lee la primera hoja del archivo.<br>
 Si el tag ya existe, se actualiza con los datos de la planilla; las celdas vacías de descripción y protección no borran lo que ya estaba cargado. Después podés editar cada tag desde la pestaña Tags.</p>
 <p><button class="btn l" name="mode" value="check">Revisar sin guardar</button> <button class="btn y" name="mode" value="import">Importar</button>
 <a class="btn l" href="{{ url_for('equipment_template') }}">Descargar planilla modelo</a></p></form>
@@ -291,4 +293,63 @@ Si el tag ya existe, se actualiza con los datos de la planilla; las celdas vací
 {% if res.errs %}<div class="box"><h3>Filas con error</h3><div class="scroll"><table><tr><th>Fila</th><th>Motivo</th></tr>{% for n, m in res.errs[:100] %}<tr><td>{{ n }}</td><td>{{ m }}</td></tr>{% endfor %}</table></div>{% if res.errs|length > 100 %}<p class="mu">Se muestran las primeras 100.</p>{% endif %}</div>{% endif %}
 {% if res.warns %}<div class="box"><h3>Advertencias</h3><div class="scroll"><table><tr><th>Fila</th><th>Detalle</th></tr>{% for n, m in res.warns[:100] %}<tr><td>{{ n }}</td><td>{{ m }}</td></tr>{% endfor %}</table></div></div>{% endif %}{% endif %}
 {% endblock %}
+'''
+
+TEMPLATES['declass.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Desclasificaciones <small>({{ items|length }})</small></h2>
+<p><a class="btn y" href="{{ url_for('declass_new') }}">Nueva desclasificación</a></p>
+<form class="box" method="get"><div class="row">
+<div><label>Área</label><select name="loc"><option value="">Todas</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if request.args.loc==i|string }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Buscar</label><input name="q" value="{{ request.args.q or '' }}" placeholder="Tag, motivo, trabajo o responsable"></div></div>
+<p><button class="btn">Filtrar</button> <a class="btn l" href="{{ url_for('declass') }}">Limpiar</a></p></form>
+{% if items %}<div class="scroll"><table><tr><th>Fecha</th><th>Área y tags</th><th>Motivo</th><th>Responsable</th></tr>
+{% for d in items %}<tr><td>{{ d.done_at }}</td><td><a class="lk" href="{{ url_for('declass_detail', did=d.id) }}"><b>{{ d.area }}</b></a><div class="mu tag">{{ d.tags|truncate(70) }}{% if d.nt > 1 %} ({{ d.nt }}){% endif %}</div></td>
+<td>{{ d.reason|truncate(100) }}</td><td>{{ d.responsible }}</td></tr>{% endfor %}</table></div>
+{% else %}<p class="mu">No hay desclasificaciones cargadas.</p>{% endif %}{% endblock %}
+'''
+
+TEMPLATES['declass_form.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Nueva desclasificación</h2>
+<form method="post" enctype="multipart/form-data" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<div class="row"><div><label>Área</label><select name="location_id" id="loc" required><option value="">Elegir…</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if f.get('location_id')==i|string }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Fecha del trabajo</label><input type="date" name="done_at" value="{{ f.get('done_at') or today }}"></div>
+<div><label>Responsable</label><input name="responsible" required value="{{ f.get('responsible') or me }}"></div></div>
+<label>Tags afectados <span class="mu" id="cnt"></span></label>
+<div class="row" style="margin-bottom:.4rem"><input id="flt" placeholder="Filtrar tags del área…" autocomplete="off"><div><button type="button" class="btn l" id="all">Marcar los visibles</button> <button type="button" class="btn l" id="none">Desmarcar todos</button></div></div>
+<div id="tl"><p class="mu" id="hint" style="padding:.6rem;margin:0">Elegí un área para ver sus tags.</p>
+{% for e in equipment %}<label class="ck" data-loc="{{ e.location_id }}" data-t="{{ e.tag|lower }} {{ (e.description or '')|lower }}" hidden><input type="checkbox" name="equipment_id" value="{{ e.id }}" {{ 'checked' if e.id|string in f.getlist('equipment_id') }}><span><b class="tag">{{ e.tag }}</b> <span class="mu">{{ e.description or '' }} · Zona {{ e.zone }}</span></span></label>{% endfor %}</div>
+<label>Motivo (por qué no era una zona con atmósfera explosiva)</label><textarea name="reason" required>{{ f.get('reason','') }}</textarea>
+<label>Trabajo realizado</label><textarea name="description" required>{{ f.get('description','') }}</textarea>
+<label style="display:flex;gap:.5rem;align-items:center;font-weight:600;margin-top:1rem"><input type="checkbox" name="set_safe" value="1" style="width:auto" checked> Cambiar la zona de los tags marcados a «Segura»</label>
+<div class="two"><div><label>Fotos del antes</label><input type="file" name="photos_antes" accept="image/*" multiple></div><div><label>Fotos del después</label><input type="file" name="photos_despues" accept="image/*" multiple></div></div>
+<p><button class="btn y">Guardar desclasificación</button> <a class="btn l" href="{{ url_for('declass') }}">Cancelar</a></p></form>
+<script>
+(function(){var loc=document.getElementById('loc'),flt=document.getElementById('flt'),cnt=document.getElementById('cnt'),hint=document.getElementById('hint'),
+L=[].slice.call(document.querySelectorAll('#tl .ck'));
+function upd(){var n=0,v=0,t=flt.value.toLowerCase().trim();
+L.forEach(function(l){var show=loc.value&&l.dataset.loc===loc.value&&(!t||l.dataset.t.indexOf(t)>-1);l.hidden=!show;if(show)v++;if(l.firstChild.checked)n++});
+hint.hidden=!!loc.value&&v>0;hint.textContent=loc.value?'No hay tags para mostrar en esta área.':'Elegí un área para ver sus tags.';
+cnt.textContent=n?'('+n+' marcados)':''}
+loc.addEventListener('change',function(){L.forEach(function(l){l.firstChild.checked=false});upd()});
+flt.addEventListener('input',upd);
+document.getElementById('tl').addEventListener('change',upd);
+document.getElementById('all').addEventListener('click',function(){L.forEach(function(l){if(!l.hidden)l.firstChild.checked=true});upd()});
+document.getElementById('none').addEventListener('click',function(){L.forEach(function(l){l.firstChild.checked=false});upd()});
+upd()})();
+</script>{% endblock %}
+'''
+
+TEMPLATES['declass_detail.html'] = r'''{% extends "base.html" %}{% block c %}
+{% macro gallery(items) %}{% if items %}<div class="photos">{% for p in items %}<a href="{{ url_for('dfiles', pid=p.id) }}" target="_blank"><img loading="lazy" src="{{ url_for('dfiles', pid=p.id) }}" alt="Foto {{ p.id }}"></a>{% endfor %}</div>{% else %}<p class="mu">Sin fotos.</p>{% endif %}{% endmacro %}
+<p><a class="lk" href="{{ url_for('declass') }}">‹ Volver al listado</a></p>
+<h2>Desclasificación · {{ d.area }}</h2>
+<div class="box"><dl><dt>Fecha</dt><dd>{{ d.done_at }}</dd><dt>Responsable</dt><dd>{{ d.responsible }}</dd>
+<dt>Zona de los tags</dt><dd>{{ 'Se cambió a Segura' if d.set_safe else 'No se modificó' }}</dd></dl></div>
+<div class="two"><div class="box"><h3>Motivo</h3><p style="white-space:pre-wrap">{{ d.reason }}</p></div>
+<div class="box"><h3>Trabajo realizado</h3><p style="white-space:pre-wrap">{{ d.description }}</p></div></div>
+<div class="box"><h3>Tags afectados ({{ tags|length }})</h3><div class="scroll"><table><tr><th>Tag</th><th>Zona antes del trabajo</th></tr>
+{% for t in tags %}<tr><td class="tag">{{ t.tag }}</td><td>{{ t.prev_zone or '—' }}</td></tr>{% endfor %}</table></div></div>
+<div class="two">{% for k, title in (('antes','Fotos del antes'),('despues','Fotos del después')) %}<div class="box"><h3>{{ title }}</h3>{{ gallery(ph[k]) }}
+<form method="post" action="{{ url_for('declass_add_photos', did=d.id) }}" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="{{ k }}">
+<input type="file" name="photos" accept="image/*" multiple required> <p><button class="btn l">Agregar fotos</button></p></form></div>{% endfor %}</div>{% endblock %}
 '''
