@@ -51,14 +51,15 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1rem;margin:0}dt
 header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;padding:0;border:1px solid #ffffff55}
 #mn{position:absolute;top:calc(100% + .45rem);left:0;z-index:30;min-width:15rem;background:var(--pa);color:var(--tx);border:1px solid var(--ln);border-radius:6px;box-shadow:0 8px 24px #0004;padding:.3rem}
 #mn[hidden]{display:none}
+#mn .sep{border-top:1px solid var(--ln);margin:.3rem .4rem}
 #mn a{display:block;color:var(--tx);padding:.65rem .8rem;border-radius:4px;border-left:4px solid transparent}
 #mn a:hover{background:var(--bg)}#mn a[aria-current]{border-left-color:var(--ye);font-weight:700;background:var(--bg)}
 </style></head><body>
 {% set ep = request.endpoint or '' %}{% macro it(url, label, on) %}<a href="{{ url }}" {{ 'aria-current=page' if on }}>{{ label }}</a>{% endmacro %}
 <header>{% if session.uid %}<div class="menu"><button type="button" id="mb" class="hb" aria-label="Menú" aria-expanded="false" aria-controls="mn"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></button>
-<nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{% if can_close %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}</nav></div>{% endif %}
+<nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{% if can_close %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
 <b>Inspecciones HAZLOC</b>
-{% if session.uid %}<span class="r"><a href="{{ url_for('password') }}">Cambiar contraseña</a>{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
+{% if session.uid %}<span class="r">{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
 </header><main>
 {% for m in get_flashed_messages() %}<div class="msg">{{ m }}</div>{% endfor %}
 {% block c %}{% endblock %}
@@ -197,6 +198,7 @@ TEMPLATES['setup.html'] = r'''{% extends "base.html" %}{% block c %}
 
 TEMPLATES['equipment.html'] = r'''{% extends "base.html" %}{% block c %}
 <h2>Tags de equipos <small>({{ items|length }})</small></h2>
+{% if session.role=='admin' %}<p><a class="btn l" href="{{ url_for('equipment_import') }}">Importar planilla</a></p>{% endif %}
 
 <form method="post" class="box"><h3>Agregar tag</h3><input type="hidden" name="_csrf" value="{{ session.csrf }}">
 <div class="row">
@@ -270,4 +272,23 @@ TEMPLATES['password.html'] = r'''{% extends "base.html" %}{% block c %}
 <label>Contraseña nueva (mínimo 8 caracteres)</label><input name="new" type="password" autocomplete="new-password" required>
 <label>Repetir contraseña nueva</label><input name="repeat" type="password" autocomplete="new-password" required>
 <p><button class="btn y">Guardar contraseña</button> <a class="btn l" href="{{ url_for('dashboard') }}">Cancelar</a></p></form>{% endblock %}
+'''
+
+TEMPLATES['equipment_import.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Importar tags desde planilla</h2>
+<form method="post" enctype="multipart/form-data" class="box">
+<input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<label>Archivo (.xlsx o .csv)</label><input type="file" name="file" accept=".xlsx,.csv,.txt" required>
+<p class="mu">Columnas, en este orden o con estos títulos en la primera fila: <b>Tag</b>, Descripción, <b>Área</b>, <b>Zona</b>, Protección Ex. Son obligatorios Tag, Área y Zona. Se lee la primera hoja del archivo.<br>
+Si el tag ya existe, se actualiza con los datos de la planilla; las celdas vacías de descripción y protección no borran lo que ya estaba cargado. Después podés editar cada tag desde la pestaña Tags.</p>
+<p><button class="btn l" name="mode" value="check">Revisar sin guardar</button> <button class="btn y" name="mode" value="import">Importar</button>
+<a class="btn l" href="{{ url_for('equipment_template') }}">Descargar planilla modelo</a></p></form>
+{% if res %}<div class="box"><h3>{{ 'Importación realizada' if res.saved else 'Revisión (no se guardó nada)' }}</h3>
+<dl><dt>Filas leídas</dt><dd>{{ res.total }}</dd><dt>Tags nuevos</dt><dd>{{ res.new }}</dd><dt>Tags actualizados</dt><dd>{{ res.updated }}</dd><dt>Sin cambios</dt><dd>{{ res.same }}</dd>
+<dt>Repetidos en la planilla</dt><dd>{{ res.dups }}</dd><dt>Filas con error (no se cargan)</dt><dd>{{ res.errs|length }}</dd></dl>
+{% if not res.saved and (res.new or res.updated) %}<p class="mu">Si está todo bien, elegí el mismo archivo y presioná <b>Importar</b>.</p>{% endif %}
+{% if res.saved %}<p><a class="btn y" href="{{ url_for('equipment') }}">Ver los tags</a></p>{% endif %}</div>
+{% if res.errs %}<div class="box"><h3>Filas con error</h3><div class="scroll"><table><tr><th>Fila</th><th>Motivo</th></tr>{% for n, m in res.errs[:100] %}<tr><td>{{ n }}</td><td>{{ m }}</td></tr>{% endfor %}</table></div>{% if res.errs|length > 100 %}<p class="mu">Se muestran las primeras 100.</p>{% endif %}</div>{% endif %}
+{% if res.warns %}<div class="box"><h3>Advertencias</h3><div class="scroll"><table><tr><th>Fila</th><th>Detalle</th></tr>{% for n, m in res.warns[:100] %}<tr><td>{{ n }}</td><td>{{ m }}</td></tr>{% endfor %}</table></div></div>{% endif %}{% endif %}
+{% endblock %}
 '''

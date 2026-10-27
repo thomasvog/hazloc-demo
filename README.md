@@ -16,7 +16,8 @@ Aplicación Flask con base de datos Postgres. Los hallazgos y las fotos se guard
 - Cada envío admite hasta ~4 MB de fotos. El navegador las reduce solo antes de enviarlas; si subís muchas juntas, hacelo en tandas.
 - Tras 5 intentos fallidos de ingreso, el usuario queda bloqueado 10 minutos.
 - Roles: *carga* (registra hallazgos eligiendo el tag de una lista y sube fotos del estado encontrado), *cierre* (además cierra, reabre, sube fotos del después y administra los tags), *admin* (además gestiona usuarios y consulta las áreas).
-- Cada usuario puede cambiar su contraseña desde «Cambiar contraseña» (arriba a la derecha). El administrador puede eliminar usuarios aunque tengan hallazgos: los hallazgos se conservan con el nombre que tenía.
+- Cada usuario puede cambiar su contraseña desde la última opción del menú de tres rayas. El administrador puede eliminar usuarios aunque tengan hallazgos: los hallazgos se conservan con el nombre que tenía.
 - Un usuario desactivado no puede ingresar; los cambios de rol y de estado se aplican al instante.
 - Las plantillas HTML están dentro de `tpl.py`.
 - Para cambiar la lista de áreas hay que editar `AREAS` al inicio de `app.py`.
+- Importar tags (solo administrador): Tags › *Importar planilla*. Acepta .xlsx o .csv con las columnas Tag, Descripción, Área, Zona y Protección Ex. Tiene un botón para revisar sin guardar y una planilla modelo descargable. Los tags que ya existen se actualizan.

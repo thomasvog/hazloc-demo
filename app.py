@@ -1,8 +1,11 @@
 """Inspecciones HAZLOC (IEC/IECEx) - versión para Vercel + Postgres (Neon)."""
+import csv
 import hashlib
 import io
 import os
+import re
 import secrets
+import unicodedata
 from datetime import date
 from functools import wraps
 
@@ -10,7 +13,7 @@ import psycopg
 from flask import (Flask, abort, flash, g, redirect, render_template, request,
                    send_file, session, url_for)
 from jinja2 import DictLoader
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from PIL import Image, ImageOps
 from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -555,3 +558,170 @@ def password():
             flash("Contraseña actualizada.")
             return redirect(url_for("dashboard"))
     return render_template("password.html")
+
+
+# ---------- importación de tags desde planilla (.xlsx / .csv) ----------
+SYN = {"tag": {"tag", "tags", "equipo", "tagequipo", "tagoequipo", "codigo"},
+       "description": {"descripcion", "description", "desc", "detalle", "nombre"},
+       "area": {"area"}, "zone": {"zona", "zone"},
+       "protection": {"proteccion", "proteccionex", "protection", "tipodeproteccion", "tipoproteccion", "ex"}}
+PROT_BARE = {"d", "e", "i", "p", "n", "m", "o", "q", "t", "db", "eb", "ia", "ib", "ic", "ma", "mb", "tb"}
+PROT_NA = {"", "na", "n a", "n/a", "otro", "otro / n.a.", "otro n a", "no aplica", "ninguna", "-"}
+MAX_ROWS = 5000
+
+
+def _norm(s):
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _key(s):
+    return re.sub(r"[^a-z0-9]", "", _norm(s))
+
+
+def _cell(v):
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip()
+
+
+def read_rows(f):
+    name, raw = (f.filename or "").lower(), f.read()
+    if name.endswith(".xlsx"):
+        wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        out = [[_cell(c) for c in r] for r in wb.worksheets[0].iter_rows(values_only=True)]
+        wb.close()
+        return out
+    if name.endswith((".csv", ".txt")):
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("cp1252")
+        first = text.splitlines()[0] if text.strip() else ""
+        d = max(";,\t", key=first.count)
+        return [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), delimiter=d)]
+    raise ValueError("Formato no admitido. Subí un archivo .xlsx o .csv (si es .xls, guardalo como .xlsx).")
+
+
+def norm_prot(v):
+    """Devuelve (valor, advertencia)."""
+    n = _norm(v)
+    if n in PROT_NA:
+        return (None if not n else "Otro / N.A."), False
+    m = re.match(r"^ex\s*([deipnmoqt])", n)
+    if m:
+        return "Ex " + m.group(1), False
+    if n in PROT_BARE:
+        return "Ex " + n[0], False
+    return "Otro / N.A.", True
+
+
+def import_tags(f, save):
+    rows_ = [(n, r) for n, r in enumerate(read_rows(f), 1) if any(r)]
+    if not rows_:
+        raise ValueError("La planilla está vacía.")
+    cols = {"tag": 0, "description": 1, "area": 2, "zone": 3, "protection": 4}
+    hdr = {}
+    for ci, h in enumerate(rows_[0][1]):
+        for name, keys in SYN.items():
+            if _key(h) in keys and name not in hdr:
+                hdr[name] = ci
+    if "tag" in hdr:
+        miss = [t for k, t in (("tag", "Tag"), ("area", "Área"), ("zone", "Zona")) if k not in hdr]
+        if miss:
+            raise ValueError("Faltan columnas obligatorias: " + ", ".join(miss) + ".")
+        cols, rows_ = hdr, rows_[1:]
+    if len(rows_) > MAX_ROWS:
+        raise ValueError("La planilla tiene más de %d filas. Dividila en partes." % MAX_ROWS)
+    amap = {_key(n): i for i, n, _ in locs()[0]}
+    out, errs, warns, dups = {}, [], [], 0
+    for n, r in rows_:
+        g = lambda k: r[cols[k]].strip() if k in cols and cols[k] < len(r) else ""
+        tag, desc, area, zone, prot = g("tag"), g("description"), g("area"), g("zone"), g("protection")
+        if not tag:
+            errs.append((n, "falta el tag"))
+            continue
+        loc = amap.get(_key(area))
+        if not loc:
+            errs.append((n, "área «%s» no válida" % area if area else "falta el área"))
+            continue
+        z = re.sub(r"^(zona|zone|z)\s*", "", _norm(zone)).strip()
+        if z not in ZONES:
+            errs.append((n, "zona «%s» no válida" % zone if zone else "falta la zona"))
+            continue
+        p, w = norm_prot(prot)
+        if w:
+            warns.append((n, "protección «%s» no reconocida: se cargó como «Otro / N.A.»" % prot))
+        k = tag.lower()
+        if k in out:
+            dups += 1
+            o = out[k]
+            o.update(tag=tag, loc=loc, zone=z)
+            o["desc"], o["prot"] = desc or o["desc"], p or o["prot"]
+        else:
+            out[k] = dict(tag=tag, desc=desc, loc=loc, zone=z, prot=p)
+    ex = {r["tag"].lower(): r for r in rows("SELECT * FROM equipment")}
+    ins, upd, same = [], [], 0
+    for k, o in out.items():
+        e = ex.get(k)
+        if not e:
+            ins.append((o["tag"], o["desc"], o["loc"], o["zone"], o["prot"]))
+            continue
+        new = (o["tag"], o["desc"] or e["description"] or "", o["loc"], o["zone"], o["prot"] or e["protection"])
+        if new == (e["tag"], e["description"] or "", e["location_id"], e["zone"], e["protection"]):
+            same += 1
+        else:
+            upd.append(new + (e["id"],))
+    if save and (ins or upd):
+        try:
+            with db().transaction():
+                cur = db().cursor()
+                cur.executemany("INSERT INTO equipment(tag,description,location_id,zone,protection) VALUES(%s,%s,%s,%s,%s)", ins)
+                cur.executemany("UPDATE equipment SET tag=%s, description=%s, location_id=%s, zone=%s, protection=%s WHERE id=%s", upd)
+                cur.executemany("UPDATE findings SET tag=%s WHERE equipment_id=%s", [(u[0], u[5]) for u in upd])
+        except psycopg.Error:
+            app.logger.exception("import de tags")
+            raise ValueError("No se pudo guardar y no se aplicó ningún cambio. Probá de nuevo.")
+    return dict(saved=save, total=len(rows_), new=len(ins), updated=len(upd), same=same, dups=dups, errs=errs, warns=warns)
+
+
+@app.route("/equipment/import", methods=["GET", "POST"])
+@need("admin")
+def equipment_import():
+    res = None
+    if request.method == "POST":
+        f = request.files.get("file")
+        if not f or not f.filename:
+            flash("Elegí un archivo .xlsx o .csv.")
+        else:
+            try:
+                res = import_tags(f, request.form.get("mode") == "import")
+            except ValueError as e:
+                flash(str(e))
+            except Exception:
+                app.logger.exception("lectura de planilla")
+                flash("No se pudo leer el archivo. Verificá que sea un .xlsx o .csv válido.")
+    return render_template("equipment_import.html", res=res)
+
+
+@app.route("/equipment/template.xlsx")
+@need("admin")
+def equipment_template():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tags"
+    ws.append(["Tag", "Descripción", "Área", "Zona", "Protección Ex"])
+    ws.append(["TB-12", "Tablero de fuerza", AREAS[0], "1", "Ex d"])
+    for col, wd in zip("ABCDE", (16, 40, 16, 8, 14)):
+        ws.column_dimensions[col].width = wd
+    v = wb.create_sheet("Valores válidos")
+    v.append(["Áreas", "Zonas", "Protección Ex"])
+    for i in range(max(len(AREAS), len(ZONES), len(PROT))):
+        v.append([AREAS[i] if i < len(AREAS) else None, ZONES[i] if i < len(ZONES) else None, PROT[i] if i < len(PROT) else None])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="planilla_tags.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
