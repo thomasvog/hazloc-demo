@@ -4,7 +4,7 @@ Aplicación Flask con base de datos Postgres. Los hallazgos y las fotos se guard
 
 ## Puesta en marcha (todo desde el navegador)
 
-1. **GitHub:** crear un repositorio nuevo, elegir *Add file › Upload files*, arrastrar los 4 archivos (`app.py`, `tpl.py`, `requirements.txt`, `README.md`) y presionar *Commit changes*.
+1. **GitHub:** crear un repositorio nuevo, elegir *Add file › Upload files*, arrastrar los 5 archivos (`app.py`, `tpl.py`, `logo.py`, `requirements.txt`, `README.md`) y presionar *Commit changes*.
 2. **Vercel:** *Add New › Project*, importar el repositorio. Antes de presionar Deploy, abrir *Environment Variables* y agregar `SETUP_KEY` con un código a elección (por ejemplo una frase larga). Presionar *Deploy*.
 3. **Base de datos:** dentro del proyecto en Vercel, ir a la pestaña *Storage*, elegir *Neon* (Postgres) y conectarlo al proyecto. Vercel agrega solo la variable `DATABASE_URL`.
 4. **Redeploy:** pestaña *Deployments*, menú ⋯ del último despliegue › *Redeploy*.
@@ -25,3 +25,4 @@ Aplicación Flask con base de datos Postgres. Los hallazgos y las fotos se guard
 - Las zonas posibles son 0, 1, 2, 20, 21, 22 y Segura (también en la importación de tags).
 - Las fotos se comprimen para ocupar como máximo 300 KB cada una. En los formularios de hallazgos hay un botón para sacar la foto con la cámara del dispositivo y otro para elegir de la galería.
 - Los tags genéricos (cajas de paso, luminarias, etc.) se cargan sin Área ni Zona; el técnico las elige en cada hallazgo. En los tags, la zona también puede ser 0/20, 1/21 o 2/22.
+- El logo de la barra superior está en `logo.py` (imagen codificada); si hace falta cambiarlo, hay que reemplazar ese archivo.

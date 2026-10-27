@@ -18,6 +18,7 @@ from PIL import Image, ImageOps
 from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from logo import LOGO_PNG
 from tpl import TEMPLATES
 
 URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or ""
@@ -165,6 +166,8 @@ def need(role="tecnico"):
 @app.before_request
 def gate():
     global _ready
+    if request.endpoint == "logo":
+        return None
     if not URL:
         return "Falta conectar la base de datos (variable DATABASE_URL). Ver el README, paso 3.", 503
     if not _ready:
@@ -839,4 +842,11 @@ def dfiles(pid):
     r = one("SELECT data FROM declass_photos WHERE id=%s", pid)
     resp = send_file(io.BytesIO(r["data"]), mimetype="image/jpeg")
     resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
+
+
+@app.route("/logo.png")
+def logo():
+    resp = send_file(io.BytesIO(LOGO_PNG), mimetype="image/png")
+    resp.headers["Cache-Control"] = "public, max-age=604800"
     return resp

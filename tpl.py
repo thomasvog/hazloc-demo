@@ -48,6 +48,9 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1rem;margin:0}dt
 :focus-visible{outline:3px solid var(--ye);outline-offset:2px}
 @media(max-width:600px){main{padding:.6rem}.big{font-size:2.2rem}}
 .menu{position:relative}
+header .logo{background:#fff;border-radius:8px;padding:.25rem .6rem;display:flex;align-items:center}header .logo:hover{background:#fff}
+header .logo img{height:36px;width:auto;display:block}
+@media(max-width:600px){header .logo{padding:.2rem .45rem}header .logo img{height:28px}}
 header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;padding:0;border:1px solid #ffffff55}
 #mn{position:absolute;top:calc(100% + .45rem);left:0;z-index:30;min-width:15rem;background:var(--pa);color:var(--tx);border:1px solid var(--ln);border-radius:6px;box-shadow:0 8px 24px #0004;padding:.3rem}
 #mn[hidden]{display:none}
@@ -55,6 +58,9 @@ header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;h
 .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:7.2rem;border-radius:16px;color:#fff;text-decoration:none;font-weight:600;box-shadow:0 2px 6px #0003;transition:transform .12s}
 .tile:hover{transform:translateY(-2px)}.tile b{font-size:2.5rem;line-height:1.1}.tile small{font-weight:400;opacity:.9}
 .tile.alta{background:#c0392b}.tile.media{background:#f2c230;color:#2b2400}.tile.baja{background:#3b7d4f}
+.abar{display:grid;grid-template-columns:minmax(7rem,10.5rem) 1fr 2rem;align-items:center;gap:.6rem;margin:.5rem 0}
+.abar>span{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.abar .tr{height:1.15rem;background:var(--bg);border-radius:4px;overflow:hidden}.abar .tr i{display:block;height:100%;border-radius:4px}.abar b{text-align:right}
 .sw{display:inline-block;width:.85rem;height:.85rem;border-radius:3px;margin-right:.45rem;vertical-align:-1px}
 .pth{display:flex;flex-wrap:wrap;gap:.6rem;margin:.5rem 0}.thm{position:relative}
 .thm img{width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--ln)}
@@ -68,7 +74,7 @@ header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;h
 {% set ep = request.endpoint or '' %}{% macro it(url, label, on) %}<a href="{{ url }}" {{ 'aria-current=page' if on }}>{{ label }}</a>{% endmacro %}
 <header>{% if session.uid %}<div class="menu"><button type="button" id="mb" class="hb" aria-label="Menú" aria-expanded="false" aria-controls="mn"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></button>
 <nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{{ it(url_for('declass'), 'Desclasificaciones', ep in ('declass','declass_new','declass_detail')) }}{% if can_tags %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
-<b>Inspecciones HAZLOC</b>
+<a class="logo" href="{{ url_for('dashboard') }}"><img src="{{ url_for('logo') }}" alt="Petrocuyo HAZLOC - Inspecciones" width="111" height="36"></a>
 {% if session.uid %}<span class="r">{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
 </header><main>
 {% for m in get_flashed_messages() %}<div class="msg">{{ m }}</div>{% endfor %}
@@ -112,7 +118,7 @@ TEMPLATES['dashboard.html'] = r'''{% extends "base.html" %}{% block c %}
 <h3>Pendientes por criticidad</h3>
 <div class="tiles">{% for c in CRIT %}<a class="tile {{ c }}" href="{{ url_for('listing', crit=c, status='pendiente') }}"><span>{{ c|capitalize }}</span><b>{{ by_crit.get(c,0) }}</b><small>pendientes</small></a>{% endfor %}</div>
 <div class="box"><h3 style="margin-top:0">Pendientes por área</h3>
-{% for i, name, color, n in by_area %}<div class="bar"><span style="width:10.5rem;font-size:.95rem"><em class="sw" style="background:{{ color }}"></em><a class="lk" href="{{ url_for('listing', loc=i, status='pendiente') }}">{{ name }}</a></span><i style="width:{{ n*100/amax }}%;background:{{ color }}"></i><b>{{ n }}</b></div>{% endfor %}</div>
+{% for i, name, color, n in by_area %}<div class="abar"><span><em class="sw" style="background:{{ color }}"></em><a class="lk" href="{{ url_for('listing', loc=i, status='pendiente') }}">{{ name }}</a></span><div class="tr"><i style="width:{{ n*100/amax }}%;background:{{ color }}"></i></div><b>{{ n }}</b></div>{% endfor %}</div>
 <h3>Pendientes más urgentes</h3>
 {% if top %}<div class="scroll"><table>
 {% for f in top %}<tr><td class="c {{ f.criticality }}"><a href="{{ url_for('detail', fid=f.id) }}"><b class="tag">{{ f.tag or '#%d'|format(f.id) }}</b></a>
