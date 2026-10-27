@@ -33,11 +33,14 @@ app.config.update(
 )
 
 AREAS = ["Polímeros", "Extrusión", "Unidad 500", "Servicios", "Bagging"]  # áreas fijas
-ZONES = ["0", "1", "2", "20", "21", "22", "Segura"]
+ZONES = ["0", "1", "2", "20", "21", "22", "0/20", "1/21", "2/22", "Segura"]
+ZMAP = {z.lower().replace(" ", ""): z for z in ZONES}
+ZMAP.update({"noclasificada": "Segura", "safe": "Segura"})
+AREA_COLORS = ["#2563a8", "#7a4fb5", "#1aa3c8", "#5b6b7b", "#c2409b"]  # azul, violeta, celeste, gris, magenta
 CRIT = ["alta", "media", "baja"]
 PROT = ["Ex d", "Ex e", "Ex i", "Ex p", "Ex n", "Ex m", "Ex o", "Ex q", "Ex t", "Otro / N.A."]
-ROLES = {"carga": 1, "cierre": 2, "admin": 3}
-ROLE_LABEL = {"carga": "Carga hallazgos", "cierre": "Carga y cierra hallazgos", "admin": "Administrador"}
+ROLES = {"tecnico": 1, "supervisor": 2, "admin": 3}
+ROLE_LABEL = {"tecnico": "Técnico", "supervisor": "Supervisor", "admin": "Administrador"}
 
 SCHEMA = [
     "CREATE TABLE IF NOT EXISTS users(id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, pw TEXT NOT NULL, role TEXT NOT NULL)",
@@ -72,6 +75,10 @@ SCHEMA = [
        kind TEXT NOT NULL, data BYTEA NOT NULL, created_at DATE NOT NULL)""",
     "CREATE INDEX IF NOT EXISTS ix_dt ON declass_tags(declass_id)",
     "CREATE INDEX IF NOT EXISTS ix_dp ON declass_photos(declass_id)",
+    "UPDATE users SET role='tecnico' WHERE role='carga'",
+    "UPDATE users SET role='supervisor' WHERE role='cierre'",
+    "ALTER TABLE equipment ALTER COLUMN location_id DROP NOT NULL",
+    "ALTER TABLE equipment ALTER COLUMN zone DROP NOT NULL",
     "CREATE INDEX IF NOT EXISTS ix_f ON findings(status, criticality, zone, location_id)",
     "CREATE INDEX IF NOT EXISTS ix_p ON photos(finding_id)",
 ]
@@ -142,7 +149,7 @@ def has_users():
     return _has
 
 
-def need(role="carga"):
+def need(role="tecnico"):
     def deco(fn):
         @wraps(fn)
         def w(*a, **k):
@@ -192,7 +199,7 @@ def too_big(_):
 @app.context_processor
 def consts():
     return dict(ZONES=ZONES, CRIT=CRIT, PROT=PROT, ROLES=ROLES, ROLE_LABEL=ROLE_LABEL,
-                can_close=ROLES.get(session.get("role"), 0) >= 2)
+                can_tags=ROLES.get(session.get("role"), 0) >= 2)
 
 
 def locs():
@@ -205,6 +212,8 @@ def findings():
     if a.get("loc", "").isdigit():
         w.append("f.location_id=%s")
         p.append(int(a["loc"]))
+    if a.get("overdue"):
+        w.append("f.status='pendiente' AND CURRENT_DATE - f.inspected_at > 30")
     for k, col in (("zone", "zone"), ("crit", "criticality"), ("status", "status")):
         if a.get(k):
             w.append("f.%s=%%s" % col)
@@ -221,6 +230,20 @@ def findings():
     return rows(sql, *p)
 
 
+def jpeg_under(im, limit=300 * 1024):
+    """Guarda la imagen como JPEG de hasta `limit` bytes bajando calidad y, si hace falta, tamaño."""
+    q = 82
+    while True:
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=q, optimize=True)
+        if buf.tell() <= limit or min(im.size) <= 320:
+            return buf.getvalue()
+        if q > 45:
+            q -= 8
+        else:
+            im = im.resize((int(im.width * .85), int(im.height * .85)), Image.LANCZOS)
+
+
 def add_photos(fid, kind, tbl="photos", col="finding_id", field="photos"):
     n = 0
     for f in request.files.getlist(field):
@@ -233,7 +256,7 @@ def add_photos(fid, kind, tbl="photos", col="finding_id", field="photos"):
             flash("No se pudo leer «%s»: no es una imagen válida." % f.filename)
             continue
         buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=80)
+        buf.write(jpeg_under(im))
         run("INSERT INTO %s(%s,kind,data,created_at) VALUES(%%s,%%s,%%s,%%s)" % (tbl, col),
             fid, kind, buf.getvalue(), date.today())
         n += 1
@@ -290,14 +313,14 @@ def logout():
 def dashboard():
     st = {r["status"]: r["n"] for r in rows("SELECT status, COUNT(*) n FROM findings GROUP BY 1")}
     by_crit = {r["k"]: r["n"] for r in rows("SELECT criticality k, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")}
+    cnt = {r["location_id"]: r["n"] for r in rows("SELECT location_id, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")}
     paths = locs()[1]
-    by_area = sorted(((paths[r["location_id"]], r["n"]) for r in rows(
-        "SELECT location_id, COUNT(*) n FROM findings WHERE status='pendiente' GROUP BY 1")), key=lambda kv: (-kv[1], kv[0]))
+    by_area = [(i, n, AREA_COLORS[AREAS.index(n)] if n in AREAS else "#888888", cnt.get(i, 0)) for i, n in paths.items()]
     old = one("SELECT COUNT(*) n FROM findings WHERE status='pendiente' AND CURRENT_DATE - inspected_at > 30")["n"]
     top = rows("SELECT id, tag, zone, criticality, location_id, inspected_at, description FROM findings "
                "WHERE status='pendiente' ORDER BY CASE criticality WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, inspected_at LIMIT 8")
     return render_template("dashboard.html", pend=st.get("pendiente", 0), sol=st.get("solucionado", 0),
-                           by_crit=by_crit, by_area=by_area, old=old, top=top, paths=paths)
+                           by_crit=by_crit, by_area=by_area, amax=max([x[3] for x in by_area] + [1]), old=old, top=top, paths=paths)
 
 
 @app.route("/findings")
@@ -334,7 +357,7 @@ def export():
 
 
 def equipment_list():
-    return rows("SELECT e.*, l.name area FROM equipment e JOIN locations l ON l.id=e.location_id ORDER BY lower(e.tag)")
+    return rows("SELECT e.*, l.name area FROM equipment e LEFT JOIN locations l ON l.id=e.location_id ORDER BY lower(e.tag)")
 
 
 @app.route("/findings/new", methods=["GET", "POST"])
@@ -346,14 +369,15 @@ def new():
         eq = None
         if f.get("equipment_id", "").isdigit():
             eq = db().execute("SELECT * FROM equipment WHERE id=%s", (int(f["equipment_id"]),)).fetchone()
-        loc = f.get("location_id") or (str(eq["location_id"]) if eq else "")
-        if not (loc.isdigit() and f.get("zone") in ZONES and f.get("criticality") in CRIT
+        loc = f.get("location_id") or (str(eq["location_id"]) if eq and eq["location_id"] else "")
+        zone = f.get("zone") or (eq["zone"] if eq else None)
+        if not (loc.isdigit() and zone in ZONES and f.get("criticality") in CRIT
                 and f.get("description", "").strip()):
             flash("Completá área, zona, criticidad y descripción.")
         else:
             r = run("INSERT INTO findings(location_id,tag,equipment_id,zone,protection,criticality,description,inspector_id,inspector_name,inspected_at)"
                     " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", int(loc), eq["tag"] if eq else "", eq["id"] if eq else None,
-                    f["zone"], f.get("protection") if f.get("protection") in PROT else None, f["criticality"],
+                    zone, eq["protection"] if eq else None, f["criticality"],
                     f["description"].strip(), session["uid"], session["name"], dt(f.get("inspected_at"))).fetchone()
             add_photos(r["id"], "antes")
             return redirect(url_for("detail", fid=r["id"]))
@@ -377,7 +401,7 @@ def detail(fid):
 def photos(fid):
     one("SELECT 1 FROM findings WHERE id=%s", fid)
     kind = request.form.get("kind")
-    if kind not in ("antes", "despues") or (kind == "despues" and ROLES[session["role"]] < 2):
+    if kind not in ("antes", "despues"):
         abort(403)
     if not add_photos(fid, kind):
         flash("No se agregó ninguna foto.")
@@ -385,7 +409,7 @@ def photos(fid):
 
 
 @app.post("/findings/<int:fid>/close")
-@need("cierre")
+@need()
 def close(fid):
     one("SELECT 1 FROM findings WHERE id=%s", fid)
     res = request.form.get("resolution", "").strip()
@@ -399,7 +423,7 @@ def close(fid):
 
 
 @app.post("/findings/<int:fid>/reopen")
-@need("cierre")
+@need()
 def reopen(fid):
     one("SELECT 1 FROM findings WHERE id=%s", fid)
     run("UPDATE findings SET status='pendiente', resolution=NULL, closed_by=NULL, closed_at=NULL WHERE id=%s", fid)
@@ -416,19 +440,19 @@ def files(pid):
 
 
 def eq_fields(f):
-    tag, loc, zone, prot = f.get("tag", "").strip(), f.get("location_id", ""), f.get("zone"), f.get("protection")
-    if not tag or not loc.isdigit() or zone not in ZONES:
+    tag, loc, zone, prot = f.get("tag", "").strip(), f.get("location_id", ""), f.get("zone", ""), f.get("protection")
+    if not tag or (loc and not loc.isdigit()) or (zone and zone not in ZONES):
         return None
-    return tag, f.get("description", "").strip(), int(loc), zone, prot if prot in PROT else None
+    return tag, f.get("description", "").strip(), int(loc) if loc else None, zone or None, prot if prot in PROT else None
 
 
 @app.route("/equipment", methods=["GET", "POST"])
-@need("cierre")
+@need("supervisor")
 def equipment():
     if request.method == "POST":
         v = eq_fields(request.form)
         if not v:
-            flash("Completá tag, área y zona.")
+            flash("Escribí el tag.")
         else:
             try:
                 run("INSERT INTO equipment(tag,description,location_id,zone,protection) VALUES(%s,%s,%s,%s,%s)", *v)
@@ -440,19 +464,19 @@ def equipment():
         return redirect(url_for("equipment"))
     q = request.args.get("q", "").strip()
     items = rows("SELECT e.*, l.name area, (SELECT COUNT(*) FROM findings f WHERE f.equipment_id=e.id) nf FROM equipment e "
-                 "JOIN locations l ON l.id=e.location_id WHERE (%s='' OR e.tag ILIKE %s OR e.description ILIKE %s OR l.name ILIKE %s) "
+                 "LEFT JOIN locations l ON l.id=e.location_id WHERE (%s='' OR e.tag ILIKE %s OR e.description ILIKE %s OR l.name ILIKE %s) "
                  "ORDER BY lower(e.tag)", q, "%" + q + "%", "%" + q + "%", "%" + q + "%")
     return render_template("equipment.html", items=items, areas=locs()[0], q=q)
 
 
 @app.route("/equipment/<int:eid>/edit", methods=["GET", "POST"])
-@need("cierre")
+@need("supervisor")
 def equipment_edit(eid):
     e = one("SELECT * FROM equipment WHERE id=%s", eid)
     if request.method == "POST":
         v = eq_fields(request.form)
         if not v:
-            flash("Completá tag, área y zona.")
+            flash("Escribí el tag.")
         else:
             try:
                 run("UPDATE equipment SET tag=%s, description=%s, location_id=%s, zone=%s, protection=%s WHERE id=%s", *v, eid)
@@ -467,7 +491,7 @@ def equipment_edit(eid):
 
 
 @app.post("/equipment/<int:eid>/delete")
-@need("cierre")
+@need("supervisor")
 def equipment_delete(eid):
     one("SELECT 1 FROM equipment WHERE id=%s", eid)
     run("DELETE FROM equipment WHERE id=%s", eid)
@@ -638,9 +662,6 @@ def import_tags(f, save):
             if _key(h) in keys and name not in hdr:
                 hdr[name] = ci
     if "tag" in hdr:
-        miss = [t for k, t in (("tag", "Tag"), ("area", "Área"), ("zone", "Zona")) if k not in hdr]
-        if miss:
-            raise ValueError("Faltan columnas obligatorias: " + ", ".join(miss) + ".")
         cols, rows_ = hdr, rows_[1:]
     if len(rows_) > MAX_ROWS:
         raise ValueError("La planilla tiene más de %d filas. Dividila en partes." % MAX_ROWS)
@@ -652,16 +673,16 @@ def import_tags(f, save):
         if not tag:
             errs.append((n, "falta el tag"))
             continue
-        loc = amap.get(_key(area))
-        if not loc:
-            errs.append((n, "área «%s» no válida" % area if area else "falta el área"))
+        loc = amap.get(_key(area)) if area else None
+        if area and not loc:
+            errs.append((n, "área «%s» no válida" % area))
             continue
-        z = re.sub(r"^(zona|zone|z)\s*", "", _norm(zone)).strip()
-        if z in ("segura", "no clasificada", "safe"):
-            z = "Segura"
-        if z not in ZONES:
-            errs.append((n, "zona «%s» no válida" % zone if zone else "falta la zona"))
-            continue
+        z = None
+        if zone:
+            z = ZMAP.get(re.sub(r"^(zona|zone|z)\s*", "", _norm(zone)).replace(" ", ""))
+            if not z:
+                errs.append((n, "zona «%s» no válida" % zone))
+                continue
         p, w = norm_prot(prot)
         if w:
             warns.append((n, "protección «%s» no reconocida: se cargó como «Otro / N.A.»" % prot))
@@ -669,8 +690,10 @@ def import_tags(f, save):
         if k in out:
             dups += 1
             o = out[k]
-            o.update(tag=tag, loc=loc, zone=z)
-            o["desc"], o["prot"] = desc or o["desc"], p or o["prot"]
+            o["tag"] = tag
+            for key, val in (("loc", loc), ("zone", z), ("desc", desc), ("prot", p)):
+                if val:
+                    o[key] = val
         else:
             out[k] = dict(tag=tag, desc=desc, loc=loc, zone=z, prot=p)
     ex = {r["tag"].lower(): r for r in rows("SELECT * FROM equipment")}
@@ -680,7 +703,7 @@ def import_tags(f, save):
         if not e:
             ins.append((o["tag"], o["desc"], o["loc"], o["zone"], o["prot"]))
             continue
-        new = (o["tag"], o["desc"] or e["description"] or "", o["loc"], o["zone"], o["prot"] or e["protection"])
+        new = (o["tag"], o["desc"] or e["description"] or "", o["loc"] or e["location_id"], o["zone"] or e["zone"], o["prot"] or e["protection"])
         if new == (e["tag"], e["description"] or "", e["location_id"], e["zone"], e["protection"]):
             same += 1
         else:
