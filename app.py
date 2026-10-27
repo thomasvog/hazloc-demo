@@ -29,6 +29,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=bool(os.environ.get("VERCEL")),
 )
 
+AREAS = ["Polímeros", "Extrusión", "Unidad 500", "Servicios", "Bagging"]  # áreas fijas
 ZONES = ["0", "1", "2", "20", "21", "22"]
 CRIT = ["alta", "media", "baja"]
 PROT = ["Ex d", "Ex e", "Ex i", "Ex p", "Ex n", "Ex m", "Ex o", "Ex q", "Ex t", "Otro / N.A."]
@@ -63,6 +64,28 @@ SCHEMA = [
     "CREATE INDEX IF NOT EXISTS ix_p ON photos(finding_id)",
 ]
 _ready = _has = False
+
+
+def sync_areas():
+    """Deja en la base exactamente las áreas fijas. Lo que esté en otras áreas (datos de prueba anteriores) se elimina."""
+    run("UPDATE locations SET parent_id=NULL WHERE parent_id IS NOT NULL")
+    keep = {}
+    for r in rows("SELECT id, name FROM locations ORDER BY id"):
+        if r["name"] in AREAS and r["name"] not in keep:
+            keep[r["name"]] = r["id"]
+        elif r["name"] in AREAS:  # duplicado de un área fija: se reasigna a la primera
+            run("UPDATE findings SET location_id=%s WHERE location_id=%s", keep[r["name"]], r["id"])
+            run("UPDATE equipment SET location_id=%s WHERE location_id=%s", keep[r["name"]], r["id"])
+            run("DELETE FROM locations WHERE id=%s", r["id"])
+    run("DELETE FROM findings WHERE location_id IN (SELECT id FROM locations WHERE name <> ALL(%s))", AREAS)
+    run("DELETE FROM equipment WHERE location_id IN (SELECT id FROM locations WHERE name <> ALL(%s))", AREAS)
+    run("DELETE FROM locations WHERE name <> ALL(%s)", AREAS)
+    try:
+        run("CREATE UNIQUE INDEX IF NOT EXISTS ux_loc_name ON locations(name)")
+    except psycopg.Error:
+        pass
+    for n in AREAS:
+        run("INSERT INTO locations(name) SELECT %s WHERE NOT EXISTS (SELECT 1 FROM locations WHERE name=%s)", n, n)
 
 
 def db():
@@ -131,6 +154,10 @@ def gate():
                 db().execute(s)
             except psycopg.Error:
                 pass
+        try:
+            sync_areas()
+        except psycopg.Error:
+            pass
         _ready = True
     session.setdefault("csrf", secrets.token_hex(16))
     if request.method == "POST" and request.form.get("_csrf") != session["csrf"]:
@@ -157,7 +184,7 @@ def consts():
 
 
 def locs():
-    r = rows("SELECT id, name FROM locations ORDER BY lower(name)")
+    r = rows("SELECT id, name FROM locations ORDER BY array_position(%s::text[], name), name", AREAS)
     return [(x["id"], x["name"], 1) for x in r], {x["id"]: x["name"] for x in r}
 
 
@@ -436,30 +463,14 @@ def equipment_delete(eid):
     return redirect(url_for("equipment"))
 
 
-@app.route("/areas", methods=["GET", "POST"])
+@app.route("/areas")
 @need("admin")
 def areas():
-    f = request.form
-    if request.method == "POST":
-        name, act = f.get("name", "").strip(), f.get("action")
-        if act == "add" and name:
-            run("INSERT INTO locations(name) VALUES(%s)", name)
-            flash("Área agregada.")
-        elif act == "rename" and name and f.get("id", "").isdigit():
-            run("UPDATE locations SET name=%s WHERE id=%s", name, int(f["id"]))
-            flash("Área renombrada.")
-        elif act == "delete" and f.get("id", "").isdigit():
-            try:
-                run("DELETE FROM locations WHERE id=%s", int(f["id"]))
-                flash("Área eliminada.")
-            except psycopg.errors.ForeignKeyViolation:
-                flash("No se puede eliminar: el área tiene tags u hallazgos asociados.")
-        else:
-            flash("Escribí un nombre.")
-        return redirect(url_for("areas"))
     return render_template("areas.html", items=rows(
         "SELECT l.id, l.name, (SELECT COUNT(*) FROM equipment e WHERE e.location_id=l.id) ne, "
-        "(SELECT COUNT(*) FROM findings f WHERE f.location_id=l.id) nf FROM locations l ORDER BY lower(l.name)"))
+        "(SELECT COUNT(*) FROM findings f WHERE f.location_id=l.id) nf, "
+        "(SELECT COUNT(*) FROM findings f WHERE f.location_id=l.id AND f.status='pendiente') np FROM locations l "
+        "ORDER BY array_position(%s::text[], l.name), l.name", AREAS))
 
 
 @app.route("/users", methods=["GET", "POST"])

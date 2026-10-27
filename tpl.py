@@ -117,7 +117,7 @@ TEMPLATES['detail.html'] = r'''{% extends "base.html" %}{% block c %}
 
 TEMPLATES['form.html'] = r'''{% extends "base.html" %}{% block c %}
 <h2>Nuevo hallazgo</h2>
-{% if not locs %}<div class="msg">Todavía no hay áreas cargadas. {% if session.role=='admin' %}<a href="{{ url_for('areas') }}">Agregalas en Áreas</a>.{% else %}Pedile a un administrador que las cargue.{% endif %}</div>{% endif %}
+
 <form method="post" enctype="multipart/form-data" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
 <label>Tag / equipo</label>
 <select name="equipment_id" id="eq"><option value="">— Sin tag —</option>{% for e in equipment %}<option value="{{ e.id }}" data-loc="{{ e.location_id }}" data-zone="{{ e.zone }}" data-prot="{{ e.protection or '' }}" {{ 'selected' if f.get('equipment_id')==e.id|string }}>{{ e.tag }} · {{ e.area }}{% if e.description %} · {{ e.description }}{% endif %}</option>{% endfor %}</select>
@@ -183,7 +183,7 @@ TEMPLATES['setup.html'] = r'''{% extends "base.html" %}{% block c %}
 
 TEMPLATES['equipment.html'] = r'''{% extends "base.html" %}{% block c %}
 <h2>Tags de equipos <small>({{ items|length }})</small></h2>
-{% if not areas %}<div class="msg">Primero hay que cargar al menos un área. {% if session.role=='admin' %}<a href="{{ url_for('areas') }}">Ir a Áreas</a>.{% endif %}</div>{% endif %}
+
 <form method="post" class="box"><h3>Agregar tag</h3><input type="hidden" name="_csrf" value="{{ session.csrf }}">
 <div class="row">
 <div><label>Tag</label><input name="tag" class="tag" required value=""></div>
@@ -218,13 +218,10 @@ TEMPLATES['equipment_edit.html'] = r'''{% extends "base.html" %}{% block c %}
 
 TEMPLATES['areas.html'] = r'''{% extends "base.html" %}{% block c %}
 <h2>Áreas</h2>
-<form method="post" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add">
-<label>Nueva área</label><div class="row"><input name="name" required placeholder="Ej.: Sala de bombas"><div><button class="btn y">Agregar área</button></div></div></form>
-{% if items %}<div class="scroll"><table><tr><th>Nombre</th><th>Tags</th><th>Hallazgos</th><th></th></tr>
-{% for a in items %}<tr><td><form method="post" style="display:flex;gap:.4rem"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{ a.id }}"><input name="name" value="{{ a.name }}" required><button class="btn l">Renombrar</button></form></td>
-<td>{{ a.ne }}</td><td>{{ a.nf }}</td>
-<td><form method="post" onsubmit="return confirm('¿Eliminar esta área?')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ a.id }}"><button class="btn l">Borrar</button></form></td></tr>{% endfor %}
-</table></div><p class="mu">Un área con tags u hallazgos asociados no se puede borrar.</p>{% else %}<p class="mu">Todavía no hay áreas.</p>{% endif %}{% endblock %}
+<p class="mu">Las áreas son fijas y no se pueden agregar ni quitar.</p>
+<div class="scroll"><table><tr><th>Área</th><th>Tags</th><th>Hallazgos pendientes</th><th>Hallazgos totales</th></tr>
+{% for a in items %}<tr><td><a class="lk" href="{{ url_for('listing', loc=a.id) }}">{{ a.name }}</a></td><td>{{ a.ne }}</td><td>{{ a.np }}</td><td>{{ a.nf }}</td></tr>{% endfor %}
+</table></div>{% endblock %}
 '''
 
 TEMPLATES['users.html'] = r'''{% extends "base.html" %}{% block c %}
