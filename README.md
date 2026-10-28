@@ -26,3 +26,4 @@ Aplicación Flask con base de datos Postgres. Los hallazgos y las fotos se guard
 - Las fotos se comprimen para ocupar como máximo 300 KB cada una. En los formularios de hallazgos hay un botón para sacar la foto con la cámara del dispositivo y otro para elegir de la galería.
 - Los tags genéricos (cajas de paso, luminarias, etc.) se cargan sin Área ni Zona; el técnico las elige en cada hallazgo. En los tags, la zona también puede ser 0/20, 1/21 o 2/22.
 - El logo de la barra superior está en `logo.py` (imagen codificada); si hace falta cambiarlo, hay que reemplazar ese archivo.
+- «Qué se encontró» en Nuevo hallazgo es una lista de tipos (Falta tornillo, Falta tapón, Prensacable en mal estado, Deterioro, Polvo en superficie, Rotura y Otro). El administrador los agrega, renombra o borra desde el menú › *Tipos de hallazgo*. «Otro» siempre está al final y habilita un campo para describir el problema.

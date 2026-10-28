@@ -34,6 +34,8 @@ app.config.update(
 )
 
 AREAS = ["Polímeros", "Extrusión", "Unidad 500", "Servicios", "Bagging"]  # áreas fijas
+OTHER = "Otro"  # tipo de hallazgo con descripción libre (fijo)
+DEFAULT_TYPES = ["Falta tornillo", "Falta tapón", "Prensacable en mal estado", "Deterioro", "Polvo en superficie", "Rotura"]
 ZONES = ["0", "1", "2", "20", "21", "22", "0/20", "1/21", "2/22", "Segura"]
 ZMAP = {z.lower().replace(" ", ""): z for z in ZONES}
 ZMAP.update({"noclasificada": "Segura", "safe": "Segura"})
@@ -80,6 +82,10 @@ SCHEMA = [
     "UPDATE users SET role='supervisor' WHERE role='cierre'",
     "ALTER TABLE equipment ALTER COLUMN location_id DROP NOT NULL",
     "ALTER TABLE equipment ALTER COLUMN zone DROP NOT NULL",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS finding_type TEXT",
+    "CREATE TABLE IF NOT EXISTS finding_types(id SERIAL PRIMARY KEY, name TEXT NOT NULL)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_ft_name ON finding_types(lower(name))",
+    "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)",
     "CREATE INDEX IF NOT EXISTS ix_f ON findings(status, criticality, zone, location_id)",
     "CREATE INDEX IF NOT EXISTS ix_p ON photos(finding_id)",
 ]
@@ -106,6 +112,13 @@ def sync_areas():
         pass
     for n in AREAS:
         run("INSERT INTO locations(name) SELECT %s WHERE NOT EXISTS (SELECT 1 FROM locations WHERE name=%s)", n, n)
+
+
+def seed_types():
+    """Carga los tipos de hallazgo iniciales una única vez (luego el administrador los gestiona)."""
+    if run("INSERT INTO meta(key,value) VALUES('types_seeded','1') ON CONFLICT DO NOTHING RETURNING key").fetchone():
+        for n in DEFAULT_TYPES:
+            run("INSERT INTO finding_types(name) VALUES(%s) ON CONFLICT DO NOTHING", n)
 
 
 def db():
@@ -180,6 +193,10 @@ def gate():
             sync_areas()
         except psycopg.Error:
             pass
+        try:
+            seed_types()
+        except psycopg.Error:
+            pass
         _ready = True
     session.setdefault("csrf", secrets.token_hex(16))
     if request.method == "POST" and request.form.get("_csrf") != session["csrf"]:
@@ -201,7 +218,7 @@ def too_big(_):
 
 @app.context_processor
 def consts():
-    return dict(ZONES=ZONES, CRIT=CRIT, PROT=PROT, ROLES=ROLES, ROLE_LABEL=ROLE_LABEL,
+    return dict(OTHER=OTHER, ZONES=ZONES, CRIT=CRIT, PROT=PROT, ROLES=ROLES, ROLE_LABEL=ROLE_LABEL,
                 can_tags=ROLES.get(session.get("role"), 0) >= 2)
 
 
@@ -340,16 +357,16 @@ def export():
     wb = Workbook()
     ws = wb.active
     ws.title = "Hallazgos"
-    ws.append(["ID", "Área", "TAG / equipo", "Zona", "Protección Ex", "Criticidad", "Estado", "Descripción",
+    ws.append(["ID", "Área", "TAG / equipo", "Zona", "Protección Ex", "Criticidad", "Estado", "Tipo de hallazgo", "Descripción",
                "Inspector", "Fecha inspección", "Resolución", "Cerrado por", "Fecha cierre", "Fotos antes", "Fotos después"])
     cnt = {}
     for r in rows("SELECT finding_id, kind, COUNT(*) n FROM photos GROUP BY 1, 2"):
         cnt[(r["finding_id"], r["kind"])] = r["n"]
     for f in findings():
         ws.append([f["id"], paths[f["location_id"]], f["tag"], f["zone"], f["protection"], f["criticality"],
-                   f["status"], f["description"], f["inspector"], f["inspected_at"], f["resolution"], f["closer"],
+                   f["status"], f["finding_type"], f["description"], f["inspector"], f["inspected_at"], f["resolution"], f["closer"],
                    f["closed_at"], cnt.get((f["id"], "antes"), 0), cnt.get((f["id"], "despues"), 0)])
-    for col, wd in zip("ABCDEFGHIJKLMNO", (6, 45, 18, 7, 12, 10, 12, 60, 20, 14, 50, 20, 13, 11, 13)):
+    for col, wd in zip("ABCDEFGHIJKLMNOP", (6, 45, 18, 7, 12, 10, 12, 26, 60, 20, 14, 50, 20, 13, 11, 13)):
         ws.column_dimensions[col].width = wd
     ws.freeze_panes = "A2"
     buf = io.BytesIO()
@@ -363,6 +380,10 @@ def equipment_list():
     return rows("SELECT e.*, l.name area FROM equipment e LEFT JOIN locations l ON l.id=e.location_id ORDER BY lower(e.tag)")
 
 
+def types_list():
+    return rows("SELECT id, name FROM finding_types ORDER BY id")
+
+
 @app.route("/findings/new", methods=["GET", "POST"])
 @need()
 def new():
@@ -374,17 +395,21 @@ def new():
             eq = db().execute("SELECT * FROM equipment WHERE id=%s", (int(f["equipment_id"]),)).fetchone()
         loc = f.get("location_id") or (str(eq["location_id"]) if eq and eq["location_id"] else "")
         zone = f.get("zone") or (eq["zone"] if eq else None)
-        if not (loc.isdigit() and zone in ZONES and f.get("criticality") in CRIT
-                and f.get("description", "").strip()):
-            flash("Completá área, zona, criticidad y descripción.")
+        ft, other = f.get("finding_type", ""), f.get("other_text", "").strip()
+        desc = other if ft == OTHER else ft
+        if ft == OTHER and not other:
+            flash("Describí el problema encontrado.")
+        elif not (loc.isdigit() and zone in ZONES and f.get("criticality") in CRIT and desc
+                  and (ft == OTHER or ft in [t["name"] for t in types_list()])):
+            flash("Completá área, zona, criticidad y qué se encontró.")
         else:
-            r = run("INSERT INTO findings(location_id,tag,equipment_id,zone,protection,criticality,description,inspector_id,inspector_name,inspected_at)"
-                    " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", int(loc), eq["tag"] if eq else "", eq["id"] if eq else None,
+            r = run("INSERT INTO findings(location_id,tag,equipment_id,zone,protection,criticality,description,finding_type,inspector_id,inspector_name,inspected_at)"
+                    " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", int(loc), eq["tag"] if eq else "", eq["id"] if eq else None,
                     zone, eq["protection"] if eq else None, f["criticality"],
-                    f["description"].strip(), session["uid"], session["name"], dt(f.get("inspected_at"))).fetchone()
+                    desc, ft, session["uid"], session["name"], dt(f.get("inspected_at"))).fetchone()
             add_photos(r["id"], "antes")
             return redirect(url_for("detail", fid=r["id"]))
-    return render_template("form.html", locs=lst, equipment=equipment_list(), f=f, today=date.today().isoformat())
+    return render_template("form.html", locs=lst, equipment=equipment_list(), types=types_list(), f=f, today=date.today().isoformat())
 
 
 @app.route("/findings/<int:fid>")
@@ -850,3 +875,34 @@ def logo():
     resp = send_file(io.BytesIO(LOGO_PNG), mimetype="image/png")
     resp.headers["Cache-Control"] = "public, max-age=604800"
     return resp
+
+
+@app.route("/types", methods=["GET", "POST"])
+@need("admin")
+def types():
+    if request.method == "POST":
+        f = request.form
+        act, name = f.get("action"), f.get("name", "").strip()
+        tid = int(f["id"]) if f.get("id", "").isdigit() else 0
+        if act in ("add", "rename") and (not name or _norm(name) == _norm(OTHER)):
+            flash("Escribí un nombre (distinto de «%s», que ya está siempre al final)." % OTHER)
+        elif act == "add":
+            try:
+                run("INSERT INTO finding_types(name) VALUES(%s)", name)
+                flash("Tipo agregado.")
+            except psycopg.errors.UniqueViolation:
+                flash("Ya existe un tipo con ese nombre.")
+        elif act == "rename" and tid:
+            old = one("SELECT name FROM finding_types WHERE id=%s", tid)["name"]
+            try:
+                run("UPDATE finding_types SET name=%s WHERE id=%s", name, tid)
+                run("UPDATE findings SET finding_type=%s, description=%s WHERE finding_type=%s AND description=%s", name, name, old, old)
+                flash("Tipo actualizado (también en los hallazgos ya cargados).")
+            except psycopg.errors.UniqueViolation:
+                flash("Ya existe un tipo con ese nombre.")
+        elif act == "delete" and tid:
+            run("DELETE FROM finding_types WHERE id=%s", tid)
+            flash("Tipo eliminado. Los hallazgos ya cargados conservan su texto.")
+        return redirect(url_for("types"))
+    return render_template("types.html", items=rows(
+        "SELECT t.id, t.name, (SELECT COUNT(*) FROM findings f WHERE f.finding_type=t.name) n FROM finding_types t ORDER BY t.id"))

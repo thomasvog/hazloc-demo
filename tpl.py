@@ -73,7 +73,7 @@ header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;h
 </style></head><body>
 {% set ep = request.endpoint or '' %}{% macro it(url, label, on) %}<a href="{{ url }}" {{ 'aria-current=page' if on }}>{{ label }}</a>{% endmacro %}
 <header>{% if session.uid %}<div class="menu"><button type="button" id="mb" class="hb" aria-label="Menú" aria-expanded="false" aria-controls="mn"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></button>
-<nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{{ it(url_for('declass'), 'Desclasificaciones', ep in ('declass','declass_new','declass_detail')) }}{% if can_tags %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
+<nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{{ it(url_for('declass'), 'Desclasificaciones', ep in ('declass','declass_new','declass_detail')) }}{% if can_tags %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('types'), 'Tipos de hallazgo', ep=='types') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
 <a class="logo" href="{{ url_for('dashboard') }}"><img src="{{ url_for('logo') }}" alt="Petrocuyo HAZLOC - Inspecciones" width="111" height="36"></a>
 {% if session.uid %}<span class="r">{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
 </header><main>
@@ -131,7 +131,7 @@ TEMPLATES['detail.html'] = r'''{% extends "base.html" %}{% block c %}{% from "ma
 {% macro gallery(items) %}{% if items %}<div class="photos">{% for p in items %}<a href="{{ url_for('files', pid=p.id) }}" target="_blank"><img loading="lazy" src="{{ url_for('files', pid=p.id) }}" alt="Foto {{ p.id }}"></a>{% endfor %}</div>{% else %}<p class="mu">Sin fotos.</p>{% endif %}{% endmacro %}
 <h2><span class="tag">{{ f.tag or 'Hallazgo #%d'|format(f.id) }}</span> <span class="pill {{ f.criticality }}">{{ f.criticality }}</span> <span class="pill {{ f.status }}">{{ f.status }}</span></h2>
 <div class="box"><dl>
-<dt>Área</dt><dd>{{ path }}</dd><dt>Zona</dt><dd>{{ f.zone }}{% if f.protection %} · {{ f.protection }}{% endif %}</dd>
+<dt>Área</dt><dd>{{ path }}</dd>{% if f.finding_type %}<dt>Tipo</dt><dd>{{ f.finding_type }}</dd>{% endif %}<dt>Zona</dt><dd>{{ f.zone }}{% if f.protection %} · {{ f.protection }}{% endif %}</dd>
 <dt>Inspección</dt><dd>{{ f.inspected_at }} · {{ f.inspector }}</dd>
 {% if f.status=='solucionado' %}<dt>Cierre</dt><dd>{{ f.closed_at }} · {{ f.closer }}</dd>{% endif %}</dl></div>
 <div class="two">
@@ -164,13 +164,18 @@ TEMPLATES['form.html'] = r'''{% extends "base.html" %}{% block c %}{% from "macr
 <div><label>Criticidad</label><select name="criticality" required><option value="">Elegir…</option>{% for c in CRIT %}<option {{ 'selected' if f.get('criticality')==c }}>{{ c }}</option>{% endfor %}</select></div>
 <div><label>Fecha de inspección</label><input type="date" name="inspected_at" value="{{ f.get('inspected_at') or today }}"></div>
 </div>
-<label>Qué se encontró</label><textarea name="description" required>{{ f.get('description','') }}</textarea>
+<label>Qué se encontró</label>
+<select name="finding_type" id="ft" required><option value="">Elegir…</option>{% for t in types %}<option {{ 'selected' if f.get('finding_type')==t.name }}>{{ t.name }}</option>{% endfor %}<option {{ 'selected' if f.get('finding_type')==OTHER }}>{{ OTHER }}</option></select>
+<div id="otw" {{ 'hidden' if f.get('finding_type')!=OTHER }}><label>Describí el problema encontrado</label><textarea name="other_text" id="ot" {{ 'disabled' if f.get('finding_type')!=OTHER else 'required' }}>{{ f.get('other_text','') }}</textarea></div>
 <label>Fotos del estado encontrado</label>{{ photos_widget() }}
 <p><button class="btn y">Guardar hallazgo</button> <a class="btn l" href="{{ url_for('listing') }}">Cancelar</a></p></form>
 <script>
 const eq=document.getElementById('eq');
 eq.addEventListener('change',()=>{const o=eq.selectedOptions[0];if(!o.value)return;
 if(o.dataset.loc)document.getElementById('loc').value=o.dataset.loc;if(o.dataset.zone)document.getElementById('zone').value=o.dataset.zone});
+const ft=document.getElementById('ft'),ot=document.getElementById('ot'),otw=document.getElementById('otw');
+function sync(){const on=ft.value==={{ OTHER|tojson }};otw.hidden=!on;ot.disabled=!on;ot.required=on}
+ft.addEventListener('change',()=>{sync();if(!ot.disabled)ot.focus()});sync();
 </script>{% endblock %}
 '''
 
@@ -378,4 +383,16 @@ TEMPLATES['macros.html'] = r'''{% macro photos_widget(field='photos') %}<div cla
 <p style="margin:.3rem 0"><button type="button" class="btn l pcam">Sacar foto con la cámara</button> <button type="button" class="btn l pgal">Elegir de la galería</button></p>
 <input type="file" class="pci" accept="image/*" capture="environment" hidden><input type="file" class="pgi" accept="image/*" multiple hidden>
 <input type="file" name="{{ field }}" class="pmain" multiple hidden><div class="pth"></div></div>{% endmacro %}
+'''
+
+TEMPLATES['types.html'] = r'''{% extends "base.html" %}{% block c %}
+<h2>Tipos de hallazgo</h2>
+<p class="mu">Son las opciones de la lista «Qué se encontró» en Nuevo hallazgo. La opción «{{ OTHER }}» siempre está al final, habilita un campo de texto libre y no se puede modificar.</p>
+<form method="post" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add">
+<label>Nuevo tipo</label><div class="row"><input name="name" required placeholder="Ej.: Falta junta"><div><button class="btn y">Agregar tipo</button></div></div></form>
+{% if items %}<div class="scroll"><table><tr><th>Nombre</th><th>Hallazgos</th><th></th></tr>
+{% for t in items %}<tr><td><form method="post" style="display:flex;gap:.4rem"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{ t.id }}"><input name="name" value="{{ t.name }}" required><button class="btn l">Guardar</button></form></td>
+<td>{{ t.n }}</td>
+<td><form method="post" onsubmit="return confirm('¿Eliminar este tipo? Los hallazgos ya cargados conservan su texto.')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ t.id }}"><button class="btn l">Borrar</button></form></td></tr>{% endfor %}
+</table></div><p class="mu">Si cambiás el nombre de un tipo, también se actualiza en los hallazgos que ya lo tenían.</p>{% else %}<p class="mu">No hay tipos cargados: en Nuevo hallazgo solo estará la opción «{{ OTHER }}».</p>{% endif %}{% endblock %}
 '''
