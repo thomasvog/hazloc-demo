@@ -5,30 +5,34 @@ TEMPLATES['base.html'] = r'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block t %}Inspecciones HAZLOC{% endblock %}</title>
+<script>try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <style>
-:root{--bg:#eceee9;--pa:#fbfbf9;--tx:#1b222b;--mu:#5d6773;--ln:#d3d7d0;--dk:#1c2430;--ye:#f5b400;--alta:#c0392b;--media:#d9830b;--baja:#3b7d4f;--ok:#2f6f4f}
+:root{--bg:#eceee9;--pa:#fbfbf9;--tx:#1b222b;--mu:#5d6773;--ln:#d3d7d0;--dk:#1c2430;--ye:#f5b400;--alta:#c0392b;--media:#d9830b;--baja:#3b7d4f;--ok:#2f6f4f;--in:#fff;--ib:#aab0a8;--lk:#0b5cad;--msg:#fff4cf;--msgb:#e3c56b;--btn:#1c2430;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161b;--pa:#1b2129;--tx:#e6e9ed;--mu:#9aa4b0;--ln:#2d3641;--dk:#0b0f14;--alta:#e2574a;--media:#e79a2c;--baja:#55a56d;--ok:#3f8a64;--in:#11151a;--ib:#4a5563;--lk:#7ab8ff;--msg:#3a3115;--msgb:#8a7430;--btn:#34404e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12161b;--pa:#1b2129;--tx:#e6e9ed;--mu:#9aa4b0;--ln:#2d3641;--dk:#0b0f14;--alta:#e2574a;--media:#e79a2c;--baja:#55a56d;--ok:#3f8a64;--in:#11151a;--ib:#4a5563;--lk:#7ab8ff;--msg:#3a3115;--msgb:#8a7430;--btn:#34404e;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,"Segoe UI",Roboto,sans-serif}
-a{color:#0b5cad}
+a{color:var(--lk)}
 header{background:var(--dk);color:#fff;border-bottom:4px solid var(--ye);display:flex;flex-wrap:wrap;gap:.25rem 1rem;align-items:center;padding:.5rem 1rem}
 header b{font-size:1.05rem;margin-right:.5rem}
 header a,header button{color:#fff;text-decoration:none;padding:.35rem .6rem;border-radius:4px;background:none;border:0;font:inherit;cursor:pointer}
 header a:hover,header button:hover{background:#ffffff22}
+header .thb{display:flex;align-items:center;justify-content:center;width:2.4rem;height:2.4rem;padding:0;border:1px solid #ffffff55}
 header .r{margin-left:auto;display:flex;align-items:center;gap:.5rem;font-size:.9rem}
 main{max-width:1100px;margin:0 auto;padding:1rem}
 h1,h2{margin:.2rem 0 .8rem;line-height:1.2}
 h2 small{color:var(--mu);font-weight:400}
 .box{background:var(--pa);border:1px solid var(--ln);border-radius:6px;padding:1rem;margin-bottom:1rem}
-.msg{background:#fff4cf;border:1px solid #e3c56b;border-radius:6px;padding:.6rem .9rem;margin-bottom:1rem}
+.msg{background:var(--msg);border:1px solid var(--msgb);border-radius:6px;padding:.6rem .9rem;margin-bottom:1rem}
 label{display:block;font-weight:600;margin:.7rem 0 .2rem}
-input,select,textarea{width:100%;font:inherit;padding:.5rem .6rem;border:1px solid #aab0a8;border-radius:5px;background:#fff;color:var(--tx)}
+input,select,textarea{width:100%;font:inherit;padding:.5rem .6rem;border:1px solid var(--ib);border-radius:5px;background:var(--in);color:var(--tx)}
 textarea{min-height:7rem}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 .8rem}
-.btn{display:inline-block;background:var(--dk);color:#fff;border:0;border-radius:5px;padding:.55rem 1rem;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
-.btn.y{background:var(--ye);color:#1b1500}.btn.g{background:var(--ok)}.btn.l{background:#fff;color:var(--tx);border:1px solid #aab0a8}
+.btn{display:inline-block;background:var(--btn);color:#fff;border:0;border-radius:5px;padding:.55rem 1rem;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+.btn.y{background:var(--ye);color:#1b1500}.btn.g{background:var(--ok)}.btn.l{background:var(--pa);color:var(--tx);border:1px solid var(--ib)}.btn[disabled]{opacity:.45;cursor:default}
 .pill{display:inline-block;padding:.05rem .55rem;border-radius:99px;color:#fff;font-size:.85rem;font-weight:600}
 .pill.alta{background:var(--alta)}.pill.media{background:var(--media)}.pill.baja{background:var(--baja)}
-.pill.pendiente{background:#fff;color:var(--alta);border:1px solid var(--alta)}.pill.solucionado{background:var(--ok)}
+.pill.pendiente{background:transparent;color:var(--alta);border:1px solid var(--alta)}.pill.solucionado{background:var(--ok)}
 .tag{font-family:ui-monospace,Menlo,Consolas,monospace}
 table{width:100%;border-collapse:collapse;background:var(--pa)}
 th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--ln);vertical-align:top}
@@ -39,7 +43,7 @@ td.c{border-left:6px solid var(--baja)}td.c.alta{border-left-color:var(--alta)}t
 .big{font-size:2.6rem;font-weight:700;line-height:1}.mu{color:var(--mu)}
 .bar{display:flex;align-items:center;gap:.6rem;margin:.35rem 0}.bar span:first-child{width:5.5rem}
 .bar i{display:block;height:1.1rem;border-radius:3px;background:var(--dk);min-width:2px}
-.split{height:1.6rem;border-radius:4px;overflow:hidden;display:flex;background:#ddd;margin:.7rem 0 .3rem}
+.split{height:1.6rem;border-radius:4px;overflow:hidden;display:flex;background:var(--ln);margin:.7rem 0 .3rem}
 .split i{display:block;height:100%}
 .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin:.5rem 0}
 .photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:5px;border:1px solid var(--ln)}
@@ -75,7 +79,7 @@ header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;h
 <header>{% if session.uid %}<div class="menu"><button type="button" id="mb" class="hb" aria-label="Menú" aria-expanded="false" aria-controls="mn"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></button>
 <nav id="mn" hidden>{{ it(url_for('dashboard'), 'Resumen', ep=='dashboard') }}{{ it(url_for('listing'), 'Hallazgos', ep in ('listing','detail')) }}{{ it(url_for('new'), 'Nuevo hallazgo', ep=='new') }}{{ it(url_for('declass'), 'Desclasificaciones', ep in ('declass','declass_new','declass_detail')) }}{% if can_tags %}{{ it(url_for('equipment'), 'Tags', ep in ('equipment','equipment_edit')) }}{% endif %}{% if session.role=='admin' %}{{ it(url_for('areas'), 'Áreas', ep=='areas') }}{{ it(url_for('types'), 'Tipos de hallazgo', ep=='types') }}{{ it(url_for('users'), 'Usuarios', ep in ('users','user_edit')) }}{% endif %}<div class="sep"></div>{{ it(url_for('password'), 'Cambiar contraseña', ep=='password') }}</nav></div>{% endif %}
 <a class="logo" href="{{ url_for('dashboard') }}"><img src="{{ url_for('logo') }}" alt="Petrocuyo HAZLOC - Inspecciones" width="111" height="36"></a>
-{% if session.uid %}<span class="r">{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form></span>{% endif %}
+<span class="r"><button type="button" id="th" class="thb" title="Cambiar tema" aria-label="Cambiar tema"></button>{% if session.uid %}{{ session.name }}<form method="post" action="{{ url_for('logout') }}" style="margin:0"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button>Salir</button></form>{% endif %}</span>
 </header><main>
 {% for m in get_flashed_messages() %}<div class="msg">{{ m }}</div>{% endfor %}
 {% block c %}{% endblock %}
@@ -103,6 +107,15 @@ function set(o){m.hidden=!o;b.setAttribute('aria-expanded',o)}
 b.addEventListener('click',function(e){e.stopPropagation();set(m.hidden)});
 document.addEventListener('click',function(e){if(!m.hidden&&!m.contains(e.target))set(false)});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!m.hidden){set(false);b.focus()}});})();
+</script>
+<script>
+(function(){var b=document.getElementById('th'),R=document.documentElement,mq=window.matchMedia('(prefers-color-scheme: dark)');
+var MOON='<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/></svg>',
+SUN='<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+function eff(){return R.getAttribute('data-theme')||(mq.matches?'dark':'light')}
+function upd(){var d=eff()==='dark',l=d?'Cambiar a modo claro':'Cambiar a modo oscuro';b.innerHTML=d?SUN:MOON;b.setAttribute('aria-label',l);b.title=l}
+b.addEventListener('click',function(){var n=eff()==='dark'?'light':'dark';R.setAttribute('data-theme',n);try{localStorage.setItem('theme',n)}catch(e){}upd()});
+if(mq.addEventListener)mq.addEventListener('change',upd);upd()})();
 </script></body></html>
 '''
 
@@ -136,10 +149,12 @@ TEMPLATES['detail.html'] = r'''{% extends "base.html" %}{% block c %}{% from "ma
 {% if f.status=='solucionado' %}<dt>Cierre</dt><dd>{{ f.closed_at }} · {{ f.closer }}</dd>{% endif %}</dl></div>
 <div class="two">
 <div class="box"><h3 style="margin-top:0">Estado encontrado</h3><p style="white-space:pre-wrap">{{ f.description }}</p>{{ gallery(ph.antes) }}
+{% if f.status=='pendiente' %}<p><a class="btn l" href="{{ url_for('finding_edit', fid=f.id) }}">Editar hallazgo</a></p>{% endif %}
 <form method="post" action="{{ url_for('photos', fid=f.id) }}" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="antes">
 {{ photos_widget() }} <p><button class="btn l">Agregar fotos</button></p></form></div>
 <div class="box"><h3 style="margin-top:0">Estado después de la reparación</h3>
 {% if f.status=='solucionado' %}<p style="white-space:pre-wrap">{{ f.resolution }}</p>{{ gallery(ph.despues) }}
+<p><a class="btn l" href="{{ url_for('finding_repair', fid=f.id) }}">Editar reparación</a></p>
 {% if session.uid %}<form method="post" action="{{ url_for('photos', fid=f.id) }}" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="despues">
 {{ photos_widget() }} <p><button class="btn l">Agregar fotos</button></p></form>
 <form method="post" action="{{ url_for('reopen', fid=f.id) }}"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button class="btn l">Reabrir hallazgo</button></form>{% endif %}
@@ -387,12 +402,54 @@ TEMPLATES['macros.html'] = r'''{% macro photos_widget(field='photos') %}<div cla
 
 TEMPLATES['types.html'] = r'''{% extends "base.html" %}{% block c %}
 <h2>Tipos de hallazgo</h2>
-<p class="mu">Son las opciones de la lista «Qué se encontró» en Nuevo hallazgo. La opción «{{ OTHER }}» siempre está al final, habilita un campo de texto libre y no se puede modificar.</p>
+<p class="mu">Son las opciones de la lista «Qué se encontró» en Nuevo hallazgo, en el orden en que se muestran: usá las flechas para subir o bajar cada una. La opción «{{ OTHER }}» siempre está al final, habilita un campo de texto libre y no se puede modificar.</p>
 <form method="post" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add">
 <label>Nuevo tipo</label><div class="row"><input name="name" required placeholder="Ej.: Falta junta"><div><button class="btn y">Agregar tipo</button></div></div></form>
-{% if items %}<div class="scroll"><table><tr><th>Nombre</th><th>Hallazgos</th><th></th></tr>
-{% for t in items %}<tr><td><form method="post" style="display:flex;gap:.4rem"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{ t.id }}"><input name="name" value="{{ t.name }}" required><button class="btn l">Guardar</button></form></td>
+{% if items %}<div class="scroll"><table><tr><th>Orden</th><th>Nombre</th><th>Hallazgos</th><th></th></tr>
+{% for t in items %}<tr id="t{{ t.id }}"><td><form method="post" style="display:flex;gap:.3rem"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="id" value="{{ t.id }}">
+<button class="btn l" name="action" value="up" aria-label="Subir {{ t.name }}" {{ 'disabled' if loop.first }}>↑</button><button class="btn l" name="action" value="down" aria-label="Bajar {{ t.name }}" {{ 'disabled' if loop.last }}>↓</button></form></td>
+<td><form method="post" style="display:flex;gap:.4rem"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{ t.id }}"><input name="name" value="{{ t.name }}" required><button class="btn l">Guardar</button></form></td>
 <td>{{ t.n }}</td>
 <td><form method="post" onsubmit="return confirm('¿Eliminar este tipo? Los hallazgos ya cargados conservan su texto.')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ t.id }}"><button class="btn l">Borrar</button></form></td></tr>{% endfor %}
 </table></div><p class="mu">Si cambiás el nombre de un tipo, también se actualiza en los hallazgos que ya lo tenían.</p>{% else %}<p class="mu">No hay tipos cargados: en Nuevo hallazgo solo estará la opción «{{ OTHER }}».</p>{% endif %}{% endblock %}
+'''
+
+TEMPLATES['finding_edit.html'] = r'''{% extends "base.html" %}{% block c %}{% from "macros.html" import photos_widget %}
+<h2>Editar hallazgo</h2>
+<form method="post" enctype="multipart/form-data" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<label>Tag / equipo</label>
+<select name="equipment_id" id="eq"><option value="">— Sin tag —</option>{% if fd.tag and (fd.equipment_id is none) %}<option value="keep" {{ 'selected' if f.get('equipment_id')=='keep' }}>{{ fd.tag }} (tag anterior)</option>{% endif %}{% for e in equipment %}<option value="{{ e.id }}" data-loc="{{ e.location_id or '' }}" data-zone="{{ e.zone or '' }}" {{ 'selected' if f.get('equipment_id')==e.id|string }}>{{ e.tag }}{% if e.area %} · {{ e.area }}{% endif %}{% if e.description %} · {{ e.description }}{% endif %}</option>{% endfor %}</select>
+<p class="mu" style="margin:.2rem 0 0">Al elegir un tag se completan el área y la zona, si el tag las tiene. {% if can_tags %}<a href="{{ url_for('equipment') }}">Administrar tags</a>.{% else %}Si falta un tag, pedile a un supervisor que lo cargue.{% endif %}</p>
+<div class="row">
+<div><label>Área</label><select name="location_id" id="loc" required><option value="">Elegir…</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if f.get('location_id')==i|string }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Zona</label><select name="zone" id="zone" required><option value="">Elegir…</option>{% for z in ZONES %}<option {{ 'selected' if f.get('zone')==z }}>{{ z }}</option>{% endfor %}</select></div>
+<div><label>Criticidad</label><select name="criticality" required><option value="">Elegir…</option>{% for c in CRIT %}<option {{ 'selected' if f.get('criticality')==c }}>{{ c }}</option>{% endfor %}</select></div>
+<div><label>Fecha de inspección</label><input type="date" name="inspected_at" value="{{ f.get('inspected_at') or today }}"></div>
+</div>
+<label>Qué se encontró</label>
+<select name="finding_type" id="ft" required><option value="">Elegir…</option>{% for t in types %}<option {{ 'selected' if f.get('finding_type')==t.name }}>{{ t.name }}</option>{% endfor %}{% if extra %}<option {{ 'selected' if f.get('finding_type')==extra }}>{{ extra }}</option>{% endif %}<option {{ 'selected' if f.get('finding_type')==OTHER }}>{{ OTHER }}</option></select>
+<div id="otw" {{ 'hidden' if f.get('finding_type')!=OTHER }}><label>Describí el problema encontrado</label><textarea name="other_text" id="ot" {{ 'disabled' if f.get('finding_type')!=OTHER else 'required' }}>{{ f.get('other_text','') }}</textarea></div>
+<label>Agregar fotos del estado encontrado</label>{{ photos_widget() }}
+<p><button class="btn y">Guardar cambios</button> <a class="btn l" href="{{ url_for('detail', fid=fd.id) }}">Cancelar</a></p></form>
+<div class="box"><h3 style="margin-top:0">Fotos actuales</h3>{% if ph %}<div class="photos">{% for p in ph %}<div><a href="{{ url_for('files', pid=p.id) }}" target="_blank"><img loading="lazy" src="{{ url_for('files', pid=p.id) }}" alt="Foto {{ p.id }}"></a>
+<form method="post" action="{{ url_for('photo_delete', fid=fd.id, pid=p.id) }}" onsubmit="return confirm('¿Quitar esta foto?')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button class="btn l" style="width:100%">Quitar</button></form></div>{% endfor %}</div>{% else %}<p class="mu" style="margin:0">Sin fotos.</p>{% endif %}</div>
+<script>
+const eq=document.getElementById('eq');
+eq.addEventListener('change',()=>{const o=eq.selectedOptions[0];if(!o.value)return;
+if(o.dataset.loc)document.getElementById('loc').value=o.dataset.loc;if(o.dataset.zone)document.getElementById('zone').value=o.dataset.zone});
+const ft=document.getElementById('ft'),ot=document.getElementById('ot'),otw=document.getElementById('otw');
+function sync(){const on=ft.value==={{ OTHER|tojson }};otw.hidden=!on;ot.disabled=!on;ot.required=on}
+ft.addEventListener('change',()=>{sync();if(!ot.disabled)ot.focus()});sync();
+</script>{% endblock %}
+'''
+
+TEMPLATES['repair_edit.html'] = r'''{% extends "base.html" %}{% block c %}{% from "macros.html" import photos_widget %}
+<h2>Editar reparación · <span class="tag">{{ fd.tag or 'Hallazgo #%d'|format(fd.id) }}</span></h2>
+<form method="post" enctype="multipart/form-data" class="box"><input type="hidden" name="_csrf" value="{{ session.csrf }}">
+<label>Qué se reparó o cambió</label><textarea name="resolution" required>{{ resolution }}</textarea>
+<label>Fecha de cierre</label><input type="date" name="closed_at" value="{{ closed_at }}">
+<label>Agregar fotos del resultado</label>{{ photos_widget() }}
+<p><button class="btn y">Guardar cambios</button> <a class="btn l" href="{{ url_for('detail', fid=fd.id) }}">Cancelar</a></p></form>
+<div class="box"><h3 style="margin-top:0">Fotos actuales</h3>{% if ph %}<div class="photos">{% for p in ph %}<div><a href="{{ url_for('files', pid=p.id) }}" target="_blank"><img loading="lazy" src="{{ url_for('files', pid=p.id) }}" alt="Foto {{ p.id }}"></a>
+<form method="post" action="{{ url_for('photo_delete', fid=fd.id, pid=p.id) }}" onsubmit="return confirm('¿Quitar esta foto?')"><input type="hidden" name="_csrf" value="{{ session.csrf }}"><button class="btn l" style="width:100%">Quitar</button></form></div>{% endfor %}</div>{% else %}<p class="mu" style="margin:0">Sin fotos.</p>{% endif %}</div>{% endblock %}
 '''

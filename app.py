@@ -85,6 +85,8 @@ SCHEMA = [
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS finding_type TEXT",
     "CREATE TABLE IF NOT EXISTS finding_types(id SERIAL PRIMARY KEY, name TEXT NOT NULL)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_ft_name ON finding_types(lower(name))",
+    "ALTER TABLE finding_types ADD COLUMN IF NOT EXISTS pos INT",
+    "UPDATE finding_types SET pos=id WHERE pos IS NULL",
     "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)",
     "CREATE INDEX IF NOT EXISTS ix_f ON findings(status, criticality, zone, location_id)",
     "CREATE INDEX IF NOT EXISTS ix_p ON photos(finding_id)",
@@ -118,7 +120,7 @@ def seed_types():
     """Carga los tipos de hallazgo iniciales una única vez (luego el administrador los gestiona)."""
     if run("INSERT INTO meta(key,value) VALUES('types_seeded','1') ON CONFLICT DO NOTHING RETURNING key").fetchone():
         for n in DEFAULT_TYPES:
-            run("INSERT INTO finding_types(name) VALUES(%s) ON CONFLICT DO NOTHING", n)
+            run("INSERT INTO finding_types(name,pos) SELECT %s, COALESCE(MAX(pos), 0) + 1 FROM finding_types ON CONFLICT DO NOTHING", n)
 
 
 def db():
@@ -381,7 +383,7 @@ def equipment_list():
 
 
 def types_list():
-    return rows("SELECT id, name FROM finding_types ORDER BY id")
+    return rows("SELECT id, name FROM finding_types ORDER BY pos, id")
 
 
 @app.route("/findings/new", methods=["GET", "POST"])
@@ -888,7 +890,7 @@ def types():
             flash("Escribí un nombre (distinto de «%s», que ya está siempre al final)." % OTHER)
         elif act == "add":
             try:
-                run("INSERT INTO finding_types(name) VALUES(%s)", name)
+                run("INSERT INTO finding_types(name,pos) SELECT %s, COALESCE(MAX(pos), 0) + 1 FROM finding_types", name)
                 flash("Tipo agregado.")
             except psycopg.errors.UniqueViolation:
                 flash("Ya existe un tipo con ese nombre.")
@@ -903,6 +905,100 @@ def types():
         elif act == "delete" and tid:
             run("DELETE FROM finding_types WHERE id=%s", tid)
             flash("Tipo eliminado. Los hallazgos ya cargados conservan su texto.")
+        elif act in ("up", "down") and tid:
+            ids = [r["id"] for r in rows("SELECT id FROM finding_types ORDER BY pos, id")]
+            if tid in ids:
+                i = ids.index(tid)
+                j = i - 1 if act == "up" else i + 1
+                if 0 <= j < len(ids):
+                    ids[i], ids[j] = ids[j], ids[i]
+                with db().transaction():
+                    db().cursor().executemany("UPDATE finding_types SET pos=%s WHERE id=%s", [(n, x) for n, x in enumerate(ids, 1)])
+            return redirect(url_for("types") + "#t%d" % tid)
         return redirect(url_for("types"))
     return render_template("types.html", items=rows(
-        "SELECT t.id, t.name, (SELECT COUNT(*) FROM findings f WHERE f.finding_type=t.name) n FROM finding_types t ORDER BY t.id"))
+        "SELECT t.id, t.name, (SELECT COUNT(*) FROM findings f WHERE f.finding_type=t.name) n FROM finding_types t ORDER BY t.pos, t.id"))
+
+
+def finding_form_values(fd):
+    """Valores iniciales del formulario de edición a partir del hallazgo guardado."""
+    ft = fd["finding_type"] or OTHER
+    return {"equipment_id": str(fd["equipment_id"]) if fd["equipment_id"] else ("keep" if fd["tag"] else ""),
+            "location_id": str(fd["location_id"]), "zone": fd["zone"], "criticality": fd["criticality"],
+            "inspected_at": fd["inspected_at"].isoformat(), "finding_type": ft,
+            "other_text": fd["description"] if ft == OTHER else ""}
+
+
+def finding_photos(fid, kind):
+    return rows("SELECT id FROM photos WHERE finding_id=%s AND kind=%s ORDER BY id", fid, kind)
+
+
+@app.route("/findings/<int:fid>/edit", methods=["GET", "POST"])
+@need()
+def finding_edit(fid):
+    fd = one("SELECT * FROM findings WHERE id=%s", fid)
+    if fd["status"] != "pendiente":
+        flash("Un hallazgo solucionado no se puede editar. Podés editar la reparación o reabrirlo.")
+        return redirect(url_for("detail", fid=fid))
+    f = request.form if request.method == "POST" else finding_form_values(fd)
+    types = types_list()
+    names = [t["name"] for t in types]
+    extra = fd["finding_type"] if fd["finding_type"] and fd["finding_type"] not in names and fd["finding_type"] != OTHER else None
+    if request.method == "POST":
+        sel = f.get("equipment_id", "")
+        eq = db().execute("SELECT * FROM equipment WHERE id=%s", (int(sel),)).fetchone() if sel.isdigit() else None
+        if sel == "keep":
+            tag, eqid, prot = fd["tag"], fd["equipment_id"], fd["protection"]
+        else:
+            tag, eqid, prot = (eq["tag"], eq["id"], eq["protection"]) if eq else ("", None, None)
+        loc = f.get("location_id") or (str(eq["location_id"]) if eq and eq["location_id"] else "")
+        zone = f.get("zone") or (eq["zone"] if eq else None)
+        ft, other = f.get("finding_type", ""), f.get("other_text", "").strip()
+        desc = other if ft == OTHER else ft
+        if ft == OTHER and not other:
+            flash("Describí el problema encontrado.")
+        elif not (loc.isdigit() and zone in ZONES and f.get("criticality") in CRIT and desc and (ft == OTHER or ft in names or ft == extra)):
+            flash("Completá área, zona, criticidad y qué se encontró.")
+        else:
+            run("UPDATE findings SET location_id=%s, tag=%s, equipment_id=%s, zone=%s, protection=%s, criticality=%s, description=%s, "
+                "finding_type=%s, inspected_at=%s WHERE id=%s AND status='pendiente'",
+                int(loc), tag, eqid, zone, prot, f["criticality"], desc, ft, dt(f.get("inspected_at")), fid)
+            add_photos(fid, "antes")
+            flash("Hallazgo actualizado.")
+            return redirect(url_for("detail", fid=fid))
+    return render_template("finding_edit.html", f=f, fd=fd, locs=locs()[0], equipment=equipment_list(), types=types, extra=extra,
+                           ph=finding_photos(fid, "antes"))
+
+
+@app.route("/findings/<int:fid>/repair", methods=["GET", "POST"])
+@need()
+def finding_repair(fid):
+    fd = one("SELECT * FROM findings WHERE id=%s", fid)
+    if fd["status"] != "solucionado":
+        flash("Solo se puede editar la reparación de un hallazgo solucionado.")
+        return redirect(url_for("detail", fid=fid))
+    if request.method == "POST":
+        res = request.form.get("resolution", "").strip()
+        if not res:
+            flash("Describí qué se reparó o cambió.")
+        else:
+            run("UPDATE findings SET resolution=%s, closed_at=%s WHERE id=%s AND status='solucionado'",
+                res, dt(request.form.get("closed_at")), fid)
+            add_photos(fid, "despues")
+            flash("Reparación actualizada.")
+            return redirect(url_for("detail", fid=fid))
+    return render_template("repair_edit.html", fd=fd, ph=finding_photos(fid, "despues"),
+                           resolution=request.form.get("resolution", fd["resolution"] or ""),
+                           closed_at=request.form.get("closed_at") or (fd["closed_at"].isoformat() if fd["closed_at"] else date.today().isoformat()))
+
+
+@app.post("/findings/<int:fid>/photos/<int:pid>/delete")
+@need()
+def photo_delete(fid, pid):
+    fd = one("SELECT status FROM findings WHERE id=%s", fid)
+    p = one("SELECT kind FROM photos WHERE id=%s AND finding_id=%s", pid, fid)
+    if (p["kind"] == "antes" and fd["status"] != "pendiente") or (p["kind"] == "despues" and fd["status"] != "solucionado"):
+        abort(403)
+    run("DELETE FROM photos WHERE id=%s", pid)
+    flash("Foto eliminada.")
+    return redirect(url_for("finding_edit" if p["kind"] == "antes" else "finding_repair", fid=fid))
