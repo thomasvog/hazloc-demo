@@ -4,12 +4,14 @@ TEMPLATES = {}
 TEMPLATES['base.html'] = r'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <title>{% block t %}Inspecciones HAZLOC{% endblock %}</title>
 <script>try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <style>
-:root{--bg:#eceee9;--pa:#fbfbf9;--tx:#1b222b;--mu:#5d6773;--ln:#d3d7d0;--dk:#1c2430;--ye:#f5b400;--alta:#c0392b;--media:#d9830b;--baja:#3b7d4f;--ok:#2f6f4f;--in:#fff;--ib:#aab0a8;--lk:#0b5cad;--msg:#fff4cf;--msgb:#e3c56b;--btn:#1c2430;color-scheme:light}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161b;--pa:#1b2129;--tx:#e6e9ed;--mu:#9aa4b0;--ln:#2d3641;--dk:#0b0f14;--alta:#e2574a;--media:#e79a2c;--baja:#55a56d;--ok:#3f8a64;--in:#11151a;--ib:#4a5563;--lk:#7ab8ff;--msg:#3a3115;--msgb:#8a7430;--btn:#34404e;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#12161b;--pa:#1b2129;--tx:#e6e9ed;--mu:#9aa4b0;--ln:#2d3641;--dk:#0b0f14;--alta:#e2574a;--media:#e79a2c;--baja:#55a56d;--ok:#3f8a64;--in:#11151a;--ib:#4a5563;--lk:#7ab8ff;--msg:#3a3115;--msgb:#8a7430;--btn:#34404e;color-scheme:dark}
+:root{--bg:#f1f5f9;--pa:#fff;--tx:#0f172a;--mu:#64748b;--ln:#e2e8f0;--dk:#0f172a;--ye:#f59e0b;--alta:#c0392b;--media:#d9830b;--baja:#3b7d4f;--ok:#047857;--in:#fff;--ib:#cbd5e1;--lk:#1d4ed8;--msg:#fffbeb;--msgb:#fcd34d;--btn:#0f172a;--sf:#f8fafc;--pe:#b45309;--ot:#047857;--al:#fef2f2;--alb:#fca5a5;--alt:#991b1b;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1220;--pa:#111a2b;--tx:#e2e8f0;--mu:#94a3b8;--ln:#1e293b;--dk:#060b14;--alta:#ef6a5e;--media:#e79a2c;--baja:#55a56d;--ok:#3f8a64;--in:#0b1220;--ib:#334155;--lk:#7ab8ff;--msg:#3a3115;--msgb:#8a7430;--btn:#334155;--sf:#0f1727;--pe:#fbbf24;--ot:#4ade80;--al:#3b1618;--alb:#7f2a2a;--alt:#fca5a5;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1220;--pa:#111a2b;--tx:#e2e8f0;--mu:#94a3b8;--ln:#1e293b;--dk:#060b14;--alta:#ef6a5e;--media:#e79a2c;--baja:#55a56d;--ok:#3f8a64;--in:#0b1220;--ib:#334155;--lk:#7ab8ff;--msg:#3a3115;--msgb:#8a7430;--btn:#334155;--sf:#0f1727;--pe:#fbbf24;--ot:#4ade80;--al:#3b1618;--alb:#7f2a2a;--alt:#fca5a5;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,"Segoe UI",Roboto,sans-serif}
 a{color:var(--lk)}
@@ -74,6 +76,49 @@ header .hb{display:flex;align-items:center;justify-content:center;width:2.6rem;h
 #mn .sep{border-top:1px solid var(--ln);margin:.3rem .4rem}
 #mn a{display:block;color:var(--tx);padding:.65rem .8rem;border-radius:4px;border-left:4px solid transparent}
 #mn a:hover{background:var(--bg)}#mn a[aria-current]{border-left-color:var(--ye);font-weight:700;background:var(--bg)}
+
+/* Estilo del prototipo de AI Studio */
+body{font-family:"Plus Jakarta Sans",system-ui,"Segoe UI",Roboto,sans-serif}
+.tag,.big,.tile b,.abar b,.kpi b,.hero .ey{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+header .hb,header .thb,header .logo{border-radius:8px}
+.box{border-radius:12px;box-shadow:0 1px 2px #0f172a0d}
+input,select,textarea{border-radius:8px;min-height:2.75rem}
+textarea{min-height:7rem}
+input[type=checkbox],input[type=radio]{min-height:0}
+.btn{border-radius:8px;min-height:2.75rem;display:inline-flex;align-items:center;justify-content:center;gap:.4rem}
+.btn.y{background:var(--ye);color:#0f172a}
+.btn.dk{background:#1e293b;color:#e2e8f0;border:1px solid #334155}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;background:var(--sf)}
+.scroll{border-radius:12px}
+.hero{background:var(--dk);color:#fff;border:1px solid #ffffff14;border-radius:12px;padding:1.1rem 1.2rem;margin-bottom:1rem}
+.hero .ey{font-size:.72rem;letter-spacing:.06em;color:#fbbf24;font-weight:700;text-transform:uppercase}
+.hero h2{color:#fff;margin:.3rem 0 .9rem;font-size:1.45rem}
+.hero .acts{display:flex;flex-wrap:wrap;gap:.5rem}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem;margin-bottom:1rem}
+.kpi{background:var(--pa);border:1px solid var(--ln);border-radius:12px;padding:.9rem 1rem}
+.kpi .l{display:block;font-size:.85rem;font-weight:600}
+.kpi b{display:block;font-size:2.1rem;line-height:1.15}
+.kpi.p{border-color:#f59e0b88}.kpi.p .l,.kpi.p b{color:var(--pe)}
+.kpi.s{border-color:#10b98188}.kpi.s .l,.kpi.s b{color:var(--ot)}
+.kpi .s2{display:block;font-size:.8rem;color:var(--mu)}
+.prog{height:6px;background:var(--ln);border-radius:3px;overflow:hidden;margin:.4rem 0 .2rem}.prog i{display:block;height:100%;background:var(--ok)}
+.alert{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;justify-content:space-between;background:var(--al);border:1px solid var(--alb);color:var(--alt);border-radius:12px;padding:.7rem .9rem;margin-bottom:1rem}
+.alert .btn{background:var(--alt);color:var(--al)}
+.fl{display:grid;gap:.6rem;margin-bottom:1rem}
+@media(min-width:900px){.fl.two2{grid-template-columns:1fr 1fr}}
+.fc{display:block;background:var(--pa);border:1px solid var(--ln);border-left:5px solid var(--baja);padding:.7rem .9rem;color:var(--tx);text-decoration:none}
+.fc.alta{border-left-color:var(--alta)}.fc.media{border-left-color:var(--media)}.fc.solucionado{border-left-color:var(--ok)}
+.fc:hover{background:var(--sf)}
+.fc .h{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}.fc .h .tag{font-weight:700;color:var(--lk)}.fc .h .st{margin-left:auto}
+.fc .m{color:var(--mu);font-size:.82rem;margin:.2rem 0}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .8rem}
+.chip{padding:.45rem .9rem;border-radius:99px;border:1px solid var(--ib);background:var(--pa);color:var(--tx);text-decoration:none;font-size:.85rem;font-weight:600}
+.chip[aria-current]{background:var(--ye);border-color:var(--ye);color:#0f172a}
+.pw .btn{margin:0 .3rem .4rem 0}
+details.box>summary{cursor:pointer;font-weight:700;list-style:none}
+details.box>summary::-webkit-details-marker{display:none}
+details.box>summary::after{content:"▾";float:right;color:var(--mu)}
+details.box[open]>summary::after{content:"▴"}
 </style></head><body>
 {% set ep = request.endpoint or '' %}{% macro it(url, label, on) %}<a href="{{ url }}" {{ 'aria-current=page' if on }}>{{ label }}</a>{% endmacro %}
 <header>{% if session.uid %}<div class="menu"><button type="button" id="mb" class="hb" aria-label="Menú" aria-expanded="false" aria-controls="mn"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></button>
@@ -121,22 +166,22 @@ if(mq.addEventListener)mq.addEventListener('change',upd);upd()})();
 
 TEMPLATES['dashboard.html'] = r'''{% extends "base.html" %}{% block c %}
 {% set tot = pend + sol %}
-<h2>Estado de los hallazgos</h2>
-<p><a class="btn y" href="{{ url_for('new') }}">Cargar hallazgo</a></p>
-<div class="box"><div class="big">{{ pend }} <span class="mu" style="font-size:1.1rem;font-weight:400">pendientes de {{ tot }} registrados</span></div>
-<div class="split">{% if tot %}<i style="width:{{ sol*100/tot }}%;background:var(--ok)"></i>{% endif %}</div>
-<div class="mu">{{ sol }} solucionados{% if tot %} ({{ (sol*100/tot)|round|int }}%){% endif %}</div></div>
-{% if old %}<div class="box" style="border-color:var(--alta);display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;justify-content:space-between">
-<b style="color:var(--alta)">{{ old }} pendiente{{ 's' if old != 1 }} con más de 30 días</b><a class="btn" href="{{ url_for('listing', status='pendiente', overdue=1) }}">Ver cuáles son</a></div>{% endif %}
+<section class="hero"><div class="ey">IEC 60079 · Integridad eléctrica</div><h2>Estado de los hallazgos</h2>
+<div class="acts"><a class="btn y" href="{{ url_for('new') }}">+ Cargar hallazgo</a><a class="btn dk" href="{{ url_for('export') }}">Exportar a Excel</a></div></section>
+<div class="kpis">
+<div class="kpi p"><span class="l">Pendientes</span><b>{{ pend }}</b><span class="s2">de {{ tot }} registrados</span></div>
+<div class="kpi s"><span class="l">Solucionados</span><b>{{ sol }}</b>{% if tot %}<div class="prog"><i style="width:{{ sol*100/tot }}%"></i></div><span class="s2">{{ (sol*100/tot)|round|int }}% del total</span>{% else %}<span class="s2">Todavía no hay registros</span>{% endif %}</div>
+</div>
+{% if old %}<div class="alert"><b>{{ old }} pendiente{{ 's' if old != 1 }} con más de 30 días</b><a class="btn" href="{{ url_for('listing', status='pendiente', overdue=1) }}">Ver cuáles son</a></div>{% endif %}
 <h3>Pendientes por criticidad</h3>
 <div class="tiles">{% for c in CRIT %}<a class="tile {{ c }}" href="{{ url_for('listing', crit=c, status='pendiente') }}"><span>{{ c|capitalize }}</span><b>{{ by_crit.get(c,0) }}</b><small>pendientes</small></a>{% endfor %}</div>
 <div class="box"><h3 style="margin-top:0">Pendientes por área</h3>
 {% for i, name, color, n in by_area %}<div class="abar"><span><em class="sw" style="background:{{ color }}"></em><a class="lk" href="{{ url_for('listing', loc=i, status='pendiente') }}">{{ name }}</a></span><div class="tr"><i style="width:{{ n*100/amax }}%;background:{{ color }}"></i></div><b>{{ n }}</b></div>{% endfor %}</div>
 <h3>Pendientes más urgentes</h3>
-{% if top %}<div class="scroll"><table>
-{% for f in top %}<tr><td class="c {{ f.criticality }}"><a href="{{ url_for('detail', fid=f.id) }}"><b class="tag">{{ f.tag or '#%d'|format(f.id) }}</b></a>
-<div class="mu">{{ paths[f.location_id] }} · Zona {{ f.zone }} · {{ f.inspected_at }}</div>{{ f.description|truncate(110) }}</td></tr>{% endfor %}
-</table></div>{% else %}<p class="mu">No hay hallazgos pendientes. Registrá el primero con «Nuevo hallazgo».</p>{% endif %}
+{% if top %}<div class="fl two2">{% for f in top %}<a class="fc {{ f.criticality }}" href="{{ url_for('detail', fid=f.id) }}">
+<div class="h"><span class="tag">{{ f.tag or '#%d'|format(f.id) }}</span><span class="pill {{ f.criticality }}">{{ f.criticality }}</span></div>
+<div class="m">{{ paths[f.location_id] }} · Zona {{ f.zone }} · {{ f.inspected_at }}</div>{{ f.description|truncate(110) }}</a>{% endfor %}</div>
+{% else %}<p class="mu">No hay hallazgos pendientes. Registrá el primero con «Nuevo hallazgo».</p>{% endif %}
 {% endblock %}
 '''
 
@@ -195,8 +240,14 @@ ft.addEventListener('change',()=>{sync();if(!ot.disabled)ot.focus()});sync();
 '''
 
 TEMPLATES['list.html'] = r'''{% extends "base.html" %}{% block c %}
+{% set a = request.args %}{% set st = a.status or '' %}
 <h2>Hallazgos <small>({{ items|length }})</small></h2>
-<form class="box" method="get">
+<nav class="chips" aria-label="Estado">
+<a class="chip" href="{{ url_for('listing') }}" {{ 'aria-current=page' if not st }}>Todos</a>
+<a class="chip" href="{{ url_for('listing', status='pendiente') }}" {{ 'aria-current=page' if st=='pendiente' }}>Pendientes</a>
+<a class="chip" href="{{ url_for('listing', status='solucionado') }}" {{ 'aria-current=page' if st=='solucionado' }}>Solucionados</a></nav>
+<details class="box" {{ 'open' if a.q or a.loc or a.zone or a.crit or a.overdue }}><summary>Buscar y filtrar</summary>
+<form method="get">
 <div class="row">
 <div><label>Buscar</label><input name="q" placeholder="TAG o texto" value="{{ request.args.q or '' }}"></div>
 <div><label>Área</label><select name="loc"><option value="">Todos</option>{% for i,p,d in locs %}<option value="{{ i }}" {{ 'selected' if request.args.loc==i|string }}>{{ p }}</option>{% endfor %}</select></div>
@@ -206,15 +257,10 @@ TEMPLATES['list.html'] = r'''{% extends "base.html" %}{% block c %}
 </div>
 <label style="display:flex;gap:.5rem;align-items:center;font-weight:400"><input type="checkbox" name="overdue" value="1" style="width:auto" {{ 'checked' if request.args.overdue }}> Solo pendientes con más de 30 días</label>
 <p><button class="btn">Filtrar</button> <a class="btn l" href="{{ url_for('listing') }}">Limpiar</a>
-<a class="btn y" href="{{ url_for('export', **request.args) }}">Exportar a Excel</a></p></form>
-{% if items %}<div class="scroll"><table><tr><th>Hallazgo</th><th>Zona</th><th>Criticidad</th><th>Estado</th><th>Inspección</th></tr>
-{% for f in items %}<tr><td class="c {{ 'solucionado' if f.status=='solucionado' else f.criticality }}">
-<a href="{{ url_for('detail', fid=f.id) }}"><b class="tag">{{ f.tag or '#%d'|format(f.id) }}</b></a>
-<div class="mu">{{ paths[f.location_id] }}</div>{{ f.description|truncate(100) }}</td>
-<td>{{ f.zone }}{% if f.protection %}<div class="mu">{{ f.protection }}</div>{% endif %}</td>
-<td><span class="pill {{ f.criticality }}">{{ f.criticality }}</span></td>
-<td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
-<td>{{ f.inspected_at }}<div class="mu">{{ f.inspector }}</div></td></tr>{% endfor %}</table></div>
+<a class="btn y" href="{{ url_for('export', **request.args) }}">Exportar a Excel</a></p></form></details>
+{% if items %}<div class="fl two2">{% for f in items %}<a class="fc {{ 'solucionado' if f.status=='solucionado' else f.criticality }}" href="{{ url_for('detail', fid=f.id) }}">
+<div class="h"><span class="tag">{{ f.tag or '#%d'|format(f.id) }}</span><span class="pill {{ f.criticality }}">{{ f.criticality }}</span><span class="pill st {{ f.status }}">{{ f.status }}</span></div>
+<div class="m">{{ paths[f.location_id] }} · Zona {{ f.zone }}{% if f.protection %} · {{ f.protection }}{% endif %} · {{ f.inspected_at }} · {{ f.inspector }}</div>{{ f.description|truncate(100) }}</a>{% endfor %}</div>
 {% else %}<p class="mu">Ningún hallazgo coincide con estos filtros.</p>{% endif %}{% endblock %}
 '''
 
